@@ -46,10 +46,11 @@ public sealed class ApplicationEngine
             StateChanged?.Invoke(args.PreviousState, args.CurrentState, args.Reason);
         };
 
-        // Register simulation and read-only platform tools backends
+        // Register simulation and platform backends
         RegisterBackend(new SimulationBackend());
         RegisterBackend(new AdbFastboot.AdbBackend());
         RegisterBackend(new AdbFastboot.FastbootBackend());
+        RegisterBackend(new Mtk.MtkBackend());
     }
 
     /// <summary>

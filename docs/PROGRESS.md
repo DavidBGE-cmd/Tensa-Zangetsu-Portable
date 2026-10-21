@@ -1,5 +1,39 @@
 # Progreso de implementación
 
+## 2026-10-21 — `TZS-2026-10-21-PHASE-F1`
+
+### Completed
+
+- **Fase F (Paso 1): Adaptador de Protocolo MediaTek (`MtkBackend`)** completado.
+- Documento de diseño formal: [`docs/plans/2026-10-21-fase-f-mtk-backend-design.md`](file:///e:/rayitasgg/Documents/Tensa-Zangetsu-Portable/docs/plans/2026-10-21-fase-f-mtk-backend-design.md).
+- Nuevo backend implementado en `src/TensaZangetsu.Services/Mtk/`:
+  - [`MtkBackend.cs`](file:///e:/rayitasgg/Documents/Tensa-Zangetsu-Portable/src/TensaZangetsu.Services/Mtk/MtkBackend.cs) — Implementa `IBackendProvider` para plataforma `"MTK"`.
+  - Orquesta `MtkProtocol.Probe(ct)` mediante `IUsbTransport` determinista.
+  - Soporta operaciones seguras de identificación: `ReadInfo`, `DeviceInfo`, `Connect`, `BootDevice`.
+  - Mapea de forma estructurada información de hardware del chip: `HardwareCode`, `HardwareSubCode`, versiones HW/SW, etapa BROM/Preloader y Security Configuration flags (`SecureBoot`, `SLA`, `DAA`, `CertRequired`).
+  - Utiliza `MtkChipCatalog` para asociar nombres comerciales (ej. MT6768 / Helio G85) a partir de los datos de silicio reales.
+  - Fail-closed estricto: operaciones destructivas (`WriteFlash`, `EraseFlash`, `FormatPartition`) y bypasses de seguridad (`ResetFrp`, `RemoveMiAccount`, `UnlockBootloader`, `SlaBypass`) retornan inmediatamente `OperationSupportLevel.Unavailable` con 0 llamadas a transporte USB y 0 I/O enviada al dispositivo.
+  - Soporta inyección de `MtkTransportFactory` para testing unitario desacoplado sin dependencias de hardware físico.
+- `ApplicationEngine.cs` actualizado: registra `MtkBackend` por defecto junto a `SimulationBackend`, `AdbBackend` y `FastbootBackend`.
+- **Tests**: 41/41 pasando en `.tests/TensaZangetsu.Services.Tests` (29 previos + 12 nuevos casos en `MtkBackendTests.cs`):
+  - Operaciones destructivas y bypasses (`ResetFrp`, `RemoveMiAccount`, `UnlockBootloader`, `WriteFlash`, `EraseFlash`, `FormatPartition`, `SlaBypass`): todas verificadas como `Unavailable` fail-closed sin abrir transporte.
+  - Dispositivo no detectado en bus USB: fallo controlado con mensaje instructivo para conectar en modo BROM (Vol+ y Vol-).
+  - `ReadInfo` exitoso: handshake BROM completo simulado en `MockBromUsbTransport` (A0, 0A, 50, 05, GetHardwareCode 0xFD, DisableWatchdog Write32 0xD4 con secuencia de eco BE, GetTargetConfiguration 0xD8, GetBootLoaderVersion 0xFE, GetBromVersion 0xFF, GetHardwareSoftwareVersion 0xFC) con chip MT6768 identificado.
+  - Cancelación: `OperationCanceledException` durante el handshake devuelve `OperationState.Cancelled` y libera el transporte (`Dispose`).
+  - Corrupción de handshake: respuesta inesperada en el handshake inicial falla de forma controlada sin simular éxito.
+  - Dispatch en `ApplicationEngine`: orquestación de `ReadInfo` para plataforma MTK a través de la máquina de estados verificada.
+- **Build Release solución completa**: 0 errores, 0 advertencias.
+
+### Pending Risks
+
+- `MtkBackend` se marca como `ImplementedUntested` para operaciones de hardware real; validación con placa física MTK pendiente para ascender a `Verified`.
+- Falta implementar DA download y `ReadGpt` para MTK dentro de `MtkBackend` cuando el usuario cargue un archivo DA.bin válido.
+
+### Next
+
+- **Fase F (Paso 2)**: Adaptar `QcomProtocolHostAdapter` a `IBackendProvider` (`QcomBackend`) con Sahara Hello e identificación BROM/EDL 9008, cubierto por tests de transporte mock.
+- **Fase F (Paso 3)**: Adaptar `SprdProtocolHostAdapter` a `IBackendProvider` (`SprdBackend`) con BSL sync.
+
 ## 2026-10-21 — `TZS-2026-10-21-PHASE-E`
 
 ### Completed
