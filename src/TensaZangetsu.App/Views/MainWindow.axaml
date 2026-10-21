@@ -4,7 +4,7 @@
         x:Class="TensaZangetsu.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         x:CompileBindings="False"
-        Title="TENSA-ZANGETSU PRO • Universal Flashing &amp; Servicing Suite (Matrix Green Technical Studio)"
+        Title="TENSA-ZANGETSU • Offline Catalog and Device Service Framework"
         Width="1360" Height="860" MinWidth="1120" MinHeight="720"
         WindowStartupLocation="CenterScreen"
         Background="#000000" Foreground="#E0FFE8">
@@ -118,7 +118,7 @@
           </Border>
           <StackPanel VerticalAlignment="Center">
             <TextBlock Text="TENSA-ZANGETSU" FontSize="14" FontWeight="Black" Foreground="#FFFFFF" LetterSpacing="0.8"/>
-            <TextBlock Text="STUDIO PRO V22 • MATRIX GREEN SERVICING SUITE" FontSize="9.5" FontWeight="Bold" Foreground="#00FF66" FontFamily="Consolas, Cascadia Code"/>
+            <TextBlock Text="OFFLINE CATALOG • DEVICE BACKENDS UNVERIFIED" FontSize="9.5" FontWeight="Bold" Foreground="#FFD600" FontFamily="Consolas, Cascadia Code"/>
           </StackPanel>
         </StackPanel>
 
@@ -276,6 +276,8 @@
                     <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableDeviceModels}" SelectedItem="{Binding SelectedDeviceModel}"
                               PlaceholderText="Seleccionar modelo indexado..." HorizontalAlignment="Stretch"/>
                   </Grid>
+                  <TextBlock Text="Perfiles de referencia: no implican soporte ni compatibilidad verificada."
+                             FontSize="10.5" Foreground="#FFD600" TextWrapping="Wrap"/>
                 </StackPanel>
               </Border>
 
@@ -284,15 +286,15 @@
                 <StackPanel Spacing="8">
                   <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                      <TextBlock Text="⚡ MULTI-DA SELECTOR" FontSize="11.5" FontWeight="Bold" Foreground="#00FF66"/>
+                      <TextBlock Text="VERIFIED DA VARIANTS — UNAVAILABLE" FontSize="11.5" FontWeight="Bold" Foreground="#00FF66"/>
                       <Border Background="#00FF66" CornerRadius="3" Padding="5,1" VerticalAlignment="Center" IsVisible="{Binding HasMultipleDaVariants}">
                         <TextBlock Text="MÚLTIPLES VERSIONES" FontSize="9" FontWeight="Bold" Foreground="#000000"/>
                       </Border>
                     </StackPanel>
-                    <CheckBox Grid.Column="1" IsChecked="{Binding IsAutoDaFallbackEnabled}" Content="Modo Auto-Fallback" FontSize="11" Foreground="#E0FFE8"/>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding IsAutoDaFallbackEnabled}" IsEnabled="False" Content="Fallback unavailable" FontSize="11" Foreground="#E0FFE8"/>
                   </Grid>
 
-                  <TextBlock Text="Variante DA para el modelo seleccionado:" FontSize="10.5" Foreground="#80FF9E"/>
+                  <TextBlock Text="No se han verificado loaders para el modelo seleccionado." FontSize="10.5" Foreground="#FFD600"/>
 
                   <!-- ComboBox de Variante Multi-DA -->
                   <ComboBox ItemsSource="{Binding AvailableDaVariants}" SelectedItem="{Binding SelectedDaVariant}" HorizontalAlignment="Stretch">
@@ -310,8 +312,8 @@
 
                   <!-- Botones de Acción de Variante -->
                   <Grid ColumnDefinitions="*,*">
-                    <Button Grid.Column="0" Content="🔄 Alternar Siguiente DA" Command="{Binding FallbackToNextDaVariantCommand}"
-                            Margin="0,0,4,0" Background="#0A180E" BorderBrush="#00CC44" Foreground="#FFD600" FontSize="11"/>
+                        <Button Grid.Column="0" Content="DA variants unavailable" Command="{Binding FallbackToNextDaVariantCommand}"
+                                IsEnabled="False" Margin="0,0,4,0" Background="#0A180E" BorderBrush="#00CC44" Foreground="#FFD600" FontSize="11"/>
                     <Button Grid.Column="1" Content="🔍 Ver TestPoint Modelo" Command="{Binding SearchTestPointForCurrentModelCommand}"
                             Margin="4,0,0,0" Background="#0A180E" BorderBrush="#00FF66" Foreground="#00FF66" FontSize="11"/>
                   </Grid>
@@ -320,8 +322,9 @@
               </Border>
 
               <!-- EXPANDER CUSTOM LOADERS (DA, Preloader, Auth) -->
-              <Expander Header="▶ Archivos Personalizados (Custom DA / Preloader / Auth)" IsExpanded="{Binding IsCustomExpanded}" Padding="8">
+              <Expander Header="▶ Reference Files (no verified backend)" IsExpanded="{Binding IsCustomExpanded}" Padding="8">
                 <StackPanel Spacing="6" Margin="0,4,0,0">
+                  <TextBlock Text="Seleccionar archivos no demuestra compatibilidad ni habilita operaciones." FontSize="10.5" Foreground="#FFD600" TextWrapping="Wrap"/>
                   <Grid ColumnDefinitions="75,*,Auto">
                     <TextBlock Text="DA File:" VerticalAlignment="Center" FontSize="11" Foreground="#80FF9E"/>
                     <TextBox Grid.Column="1" Text="{Binding CustomDaPath}" PlaceholderText="MTK_AllInOne_DA.bin" FontSize="11" Margin="0,0,4,0"/>
@@ -352,14 +355,12 @@
                 <StackPanel Spacing="8">
                   <TextBlock Text="ENLACE Y DETECCIÓN DEL HARDWARE" FontSize="11" FontWeight="Bold" Foreground="#00FF66"/>
 
-                  <!-- BOTÓN PRIMARIO: CONNECT / READ INFO (Handshake BROM/EDL y lectura sin reiniciar) -->
-                  <Button Classes="action-primary" Content="⚡ CONNECT / READ INFO (BROM / EDL / DA HANDSHAKE)"
+                  <Button Classes="action-primary" Content="⚡ CONNECT / READ INFO"
                           Command="{Binding ConnectAndReadInfoCommand}"
-                          Height="42" HorizontalAlignment="Stretch" FontSize="12.5"/>
+                          IsEnabled="{Binding !IsBusy}" Height="42" HorizontalAlignment="Stretch" FontSize="12.5"/>
 
-                  <!-- BOTÓN SEPARADO: REBOOT AL SISTEMA -->
-                  <Button Content="🔄 REBOOT (REINICIAR DISPOSITIVO AL SISTEMA)" Command="{Binding RebootDeviceCommand}"
-                          Height="36" HorizontalAlignment="Stretch" Background="#08140B" BorderBrush="#00CC44" Foreground="#80FF9E"/>
+                  <Button Content="🔄 REBOOT" Command="{Binding RebootDeviceCommand}"
+                          IsEnabled="{Binding !IsBusy}" Height="36" HorizontalAlignment="Stretch" Background="#08140B" BorderBrush="#00CC44" Foreground="#80FF9E"/>
                 </StackPanel>
               </Border>
 
@@ -367,13 +368,12 @@
               <Border Background="#060C08" BorderBrush="#00CC44" BorderThickness="1" CornerRadius="4" Padding="12">
                 <StackPanel Spacing="8">
                   <TextBlock Text="PUENTES DE ENLACE QUALCOMM EDL 9008" FontSize="11" FontWeight="Bold" Foreground="#00FF66"/>
-                  <TextBlock Text="Fuerza el reinicio inmediato hacia Qualcomm HS-USB QDLoader 9008 desde modo Fastboot o ADB:" FontSize="10.5" Foreground="#80FF9E"/>
 
                   <Grid ColumnDefinitions="*,*">
                     <Button Grid.Column="0" Content="⚡ Fastboot -> EDL 9008" Command="{Binding FastbootToEdlCommand}"
-                            Margin="0,0,4,0" Height="36" Background="#08140B" BorderBrush="#00CC44" Foreground="#00FF66"/>
+                            IsEnabled="{Binding !IsBusy}" Margin="0,0,4,0" Height="36" Background="#08140B" BorderBrush="#00CC44" Foreground="#00FF66"/>
                     <Button Grid.Column="1" Content="⚡ ADB -> EDL 9008" Command="{Binding AdbToEdlCommand}"
-                            Margin="4,0,0,0" Height="36" Background="#08140B" BorderBrush="#00CC44" Foreground="#00FF66"/>
+                            IsEnabled="{Binding !IsBusy}" Margin="4,0,0,0" Height="36" Background="#08140B" BorderBrush="#00CC44" Foreground="#00FF66"/>
                   </Grid>
                 </StackPanel>
               </Border>
@@ -381,13 +381,13 @@
               <!-- MOTOR BYPASS SLA/DAA PYTHON & AMONET -->
               <Border Background="#060C08" BorderBrush="#00CC44" BorderThickness="1" CornerRadius="4" Padding="12">
                 <StackPanel Spacing="8">
-                  <TextBlock Text="EXPLOITS Y REPARACIÓN AVANZADA" FontSize="11" FontWeight="Bold" Foreground="#00FF66"/>
+                  <TextBlock Text="OPERACIONES DE SERVICIO BROM / GPT" FontSize="11" FontWeight="Bold" Foreground="#00FF66"/>
 
-                  <Button Content="⚡ Ejecutar Bypass SLA/DAA (Python Subprocess Engine)" Command="{Binding RunPythonBypassCommand}"
-                          Height="36" HorizontalAlignment="Stretch" Background="#14080A" BorderBrush="#FF3344" Foreground="#FF6677"/>
+                  <Button Content="⚡ Bypass SLA/DAA" Command="{Binding RunPythonBypassCommand}"
+                          IsEnabled="{Binding !IsBusy}" Height="36" HorizontalAlignment="Stretch" Background="#14080A" BorderBrush="#FF3344" Foreground="#FF6677"/>
 
-                  <Button Content="🛠️ Amonet GPT Fix (Reconstrucción PGPT / SGPT &amp; CRC32)" Command="{Binding AmonetGptFixCommand}"
-                          Height="36" HorizontalAlignment="Stretch" Background="#0A180E" BorderBrush="#00CC44" Foreground="#FFD600"/>
+                  <Button Content="🛠️ GPT repair" Command="{Binding AmonetGptFixCommand}"
+                          IsEnabled="{Binding !IsBusy}" Height="36" HorizontalAlignment="Stretch" Background="#0A180E" BorderBrush="#00CC44" Foreground="#FFD600"/>
                 </StackPanel>
               </Border>
 
@@ -403,23 +403,23 @@
           <StackPanel Spacing="12" MaxWidth="850" HorizontalAlignment="Left">
 
             <!-- BOTONES DE ACCIÓN RÁPIDA 1-CLICK -->
-            <TextBlock Text="OPERACIONES DE SERVICIO EN 1-CLIC" FontSize="11" FontWeight="Bold" Foreground="#00FF66"/>
+            <TextBlock Text="ACCIONES RÁPIDAS DE SERVICIO Y SEGURIDAD" FontSize="11" FontWeight="Bold" Foreground="#00FF66"/>
             <UniformGrid Columns="3" Rows="2">
-              <Button Classes="action-primary" Content="🔓 REMOVE FRP" Command="{Binding RemoveFrpCommand}" Height="40" Margin="3"/>
+              <Button Classes="action-primary" Content="FRP RESET" Command="{Binding RemoveFrpCommand}" IsEnabled="{Binding !IsBusy}" Height="40" Margin="3"/>
 
-              <Button Content="🔓 UNLOCK / LOCK BOOTLOADER" Command="{Binding UnlockBootloaderCommand}" Height="40" Margin="3"
+              <Button Content="BOOTLOADER UNLOCK" Command="{Binding UnlockBootloaderCommand}" IsEnabled="{Binding !IsBusy}" Height="40" Margin="3"
                       Background="#0B180D" BorderBrush="#00CC44" Foreground="#00FF66" FontWeight="Bold"/>
 
-              <Button Content="☁️ REMOVE MI ACCOUNT" Command="{Binding RemoveMiAccountCommand}" Height="40" Margin="3"
+              <Button Content="MI ACCOUNT BYPASS" Command="{Binding RemoveMiAccountCommand}" IsEnabled="{Binding !IsBusy}" Height="40" Margin="3"
                       Background="#0B180D" BorderBrush="#00CC44" Foreground="#00FF66" FontWeight="Bold"/>
 
-              <Button Content="🛡️ REMOVE HUAWEI ID" Command="{Binding RemoveHuaweiIdCommand}" Height="40" Margin="3"
+              <Button Content="HUAWEI ID RESET" Command="{Binding RemoveHuaweiIdCommand}" IsEnabled="{Binding !IsBusy}" Height="40" Margin="3"
                       Background="#0B180D" BorderBrush="#00CC44" Foreground="#80FF9E"/>
 
-              <Button Content="🚫 DISABLE OTA UPDATES" Command="{Binding DisableOtaCommand}" Height="40" Margin="3"
+              <Button Content="DISABLE OTA" Command="{Binding DisableOtaCommand}" IsEnabled="{Binding !IsBusy}" Height="40" Margin="3"
                       Background="#0B180D" BorderBrush="#00CC44" Foreground="#80FF9E"/>
 
-              <Button Content="🔑 READ HARDWARE KEYS (JSON)" Command="{Binding ReadHardwareKeysCommand}" Height="40" Margin="3"
+              <Button Content="HARDWARE KEYS" Command="{Binding ReadHardwareKeysCommand}" IsEnabled="{Binding !IsBusy}" Height="40" Margin="3"
                       Background="#0B180D" BorderBrush="#00CC44" Foreground="#80FF9E"/>
             </UniformGrid>
 
@@ -433,7 +433,7 @@
               <TextBlock Text="Factory Reset:-" VerticalAlignment="Center" Foreground="#80FF9E" FontSize="11.5" FontWeight="SemiBold"/>
               <ComboBox Grid.Column="1" ItemsSource="{Binding FactoryResetTasks}" SelectedItem="{Binding SelectedFactoryResetTask}"
                         HorizontalAlignment="Stretch" Margin="0,0,8,0"/>
-              <Button Grid.Column="2" Content="Start" Command="{Binding StartFactoryResetTaskCommand}" Background="#0A180E" Foreground="#00FF66"/>
+              <Button Grid.Column="2" Content="Ejecutar" Command="{Binding StartFactoryResetTaskCommand}" IsEnabled="{Binding !IsBusy}" Background="#0A180E" Foreground="#00FF66"/>
             </Grid>
 
             <!-- Security / EFS Task -->
@@ -441,7 +441,7 @@
               <TextBlock Text="Security / EFS :-" VerticalAlignment="Center" Foreground="#80FF9E" FontSize="11.5" FontWeight="SemiBold"/>
               <ComboBox Grid.Column="1" ItemsSource="{Binding SecurityTasks}" SelectedItem="{Binding SelectedSecurityTask}"
                         HorizontalAlignment="Stretch" Margin="0,0,8,0"/>
-              <Button Grid.Column="2" Content="Start" Command="{Binding StartSecurityTaskCommand}" Background="#0A180E" Foreground="#00FF66"/>
+              <Button Grid.Column="2" Content="Ejecutar" Command="{Binding StartSecurityTaskCommand}" IsEnabled="{Binding !IsBusy}" Background="#0A180E" Foreground="#00FF66"/>
             </Grid>
 
             <!-- Meta Task -->
@@ -449,7 +449,7 @@
               <TextBlock Text="Meta Task :-" VerticalAlignment="Center" Foreground="#80FF9E" FontSize="11.5" FontWeight="SemiBold"/>
               <ComboBox Grid.Column="1" ItemsSource="{Binding MetaTasks}" SelectedItem="{Binding SelectedMetaTask}"
                         HorizontalAlignment="Stretch" Margin="0,0,8,0"/>
-              <Button Grid.Column="2" Content="Start" Command="{Binding StartMetaTaskCommand}" Background="#0A180E" Foreground="#00FF66"/>
+              <Button Grid.Column="2" Content="Ejecutar" Command="{Binding StartMetaTaskCommand}" IsEnabled="{Binding !IsBusy}" Background="#0A180E" Foreground="#00FF66"/>
             </Grid>
 
             <!-- MT62xx Tasks -->
@@ -457,7 +457,7 @@
               <TextBlock Text="MT62xx Tasks :-" VerticalAlignment="Center" Foreground="#80FF9E" FontSize="11.5" FontWeight="SemiBold"/>
               <ComboBox Grid.Column="1" ItemsSource="{Binding Mt62xxTasks}" SelectedItem="{Binding SelectedMt62xxTask}"
                         HorizontalAlignment="Stretch" Margin="0,0,8,0"/>
-              <Button Grid.Column="2" Content="Start" Command="{Binding StartMt62xxTaskCommand}" Background="#0A180E" Foreground="#00FF66"/>
+              <Button Grid.Column="2" Content="Ejecutar" Command="{Binding StartMt62xxTaskCommand}" IsEnabled="{Binding !IsBusy}" Background="#0A180E" Foreground="#00FF66"/>
             </Grid>
 
             <!-- RPMB & OEMINFO -->
@@ -465,7 +465,7 @@
               <TextBlock Text="RPMB Partition :-" VerticalAlignment="Center" Foreground="#80FF9E" FontSize="11.5" FontWeight="SemiBold"/>
               <ComboBox Grid.Column="1" ItemsSource="{Binding RpmbTasks}" SelectedItem="{Binding SelectedRpmbTask}"
                         HorizontalAlignment="Stretch" Margin="0,0,8,0"/>
-              <Button Grid.Column="2" Content="Start" Command="{Binding StartRpmbTaskCommand}" Background="#0A180E" Foreground="#00FF66"/>
+              <Button Grid.Column="2" Content="Ejecutar" Command="{Binding StartRpmbTaskCommand}" IsEnabled="{Binding !IsBusy}" Background="#0A180E" Foreground="#00FF66"/>
             </Grid>
 
             <!-- LK Patch -->
@@ -473,7 +473,7 @@
               <TextBlock Text="LK LittleKernel :-" VerticalAlignment="Center" Foreground="#80FF9E" FontSize="11.5" FontWeight="SemiBold"/>
               <ComboBox Grid.Column="1" ItemsSource="{Binding LkTasks}" SelectedItem="{Binding SelectedLkTask}"
                         HorizontalAlignment="Stretch" Margin="0,0,8,0"/>
-              <Button Grid.Column="2" Content="Start" Command="{Binding StartLkTaskCommand}" Background="#0A180E" Foreground="#00FF66"/>
+              <Button Grid.Column="2" Content="Ejecutar" Command="{Binding StartLkTaskCommand}" IsEnabled="{Binding !IsBusy}" Background="#0A180E" Foreground="#00FF66"/>
             </Grid>
 
           </StackPanel>
@@ -537,17 +537,17 @@
           <!-- Barra Inferior de Flasheo (CORREGIDO BOTÓN A CONNECT / READ INFO Y AGREGADO REBOOT INDEPENDIENTE) -->
           <UniformGrid Grid.Row="3" Columns="6" Rows="1" Margin="0,10,0,0">
             <!-- 1. Enlace BROM / EDL y lectura de Hardware -->
-            <Button Classes="action-primary" Content="⚡ CONNECT / READ INFO" Command="{Binding ConnectAndReadInfoCommand}" Margin="0,0,3,0" Height="36"/>
+            <Button Classes="action-primary" Content="CONNECT / READ INFO" Command="{Binding ConnectAndReadInfoCommand}" IsEnabled="{Binding !IsBusy}" Margin="0,0,3,0" Height="36"/>
             <!-- 2. Volcado -->
-            <Button Content="📥 READ (DUMP)" Command="{Binding ReadFlashCommand}" Margin="2,0" Height="36" Background="#0A180E" BorderBrush="#00CC44" Foreground="#00FF66"/>
+            <Button Content="READ DUMP" Command="{Binding ReadFlashCommand}" IsEnabled="{Binding !IsBusy}" Margin="2,0" Height="36" Background="#0A180E" BorderBrush="#00CC44" Foreground="#00FF66"/>
             <!-- 3. Flasheo -->
-            <Button Content="📤 WRITE (FLASH)" Command="{Binding WriteFlashCommand}" Margin="2,0" Height="36" Background="#0F2815" BorderBrush="#00FF66" Foreground="#00FF66"/>
+            <Button Content="WRITE FLASH" Command="{Binding WriteFlashCommand}" IsEnabled="{Binding !IsBusy}" Margin="2,0" Height="36" Background="#0F2815" BorderBrush="#00FF66" Foreground="#00FF66"/>
             <!-- 4. Borrado -->
-            <Button Content="🗑️ ERASE" Command="{Binding EraseFlashCommand}" Margin="2,0" Height="36" Background="#14080A" BorderBrush="#FF3344" Foreground="#FF6677"/>
+            <Button Content="ERASE FLASH" Command="{Binding EraseFlashCommand}" IsEnabled="{Binding !IsBusy}" Margin="2,0" Height="36" Background="#14080A" BorderBrush="#FF3344" Foreground="#FF6677"/>
             <!-- 5. GPT Fix -->
-            <Button Content="🛠️ AMONET GPT FIX" Command="{Binding AmonetGptFixCommand}" Margin="2,0" Height="36" Background="#0A180E" BorderBrush="#00CC44" Foreground="#FFD600"/>
+            <Button Content="🛠️ GPT REPAIR" Command="{Binding AmonetGptFixCommand}" IsEnabled="{Binding !IsBusy}" Margin="2,0" Height="36" Background="#0A180E" BorderBrush="#00CC44" Foreground="#FFD600"/>
             <!-- 6. Reinicio independiente -->
-            <Button Content="🔄 REBOOT" Command="{Binding RebootDeviceCommand}" Margin="3,0,0,0" Height="36" Background="#08140B" BorderBrush="#00CC44" Foreground="#80FF9E"/>
+            <Button Content="REBOOT" Command="{Binding RebootDeviceCommand}" IsEnabled="{Binding !IsBusy}" Margin="3,0,0,0" Height="36" Background="#08140B" BorderBrush="#00CC44" Foreground="#80FF9E"/>
           </UniformGrid>
 
         </Grid>
@@ -559,7 +559,7 @@
 
           <!-- COLUMNA IZQUIERDA: LISTA Y BUSCADOR DE TESTPOINTS -->
           <Border Grid.Column="0" Background="#040805" BorderBrush="#00CC44" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0,0,10,0">
-            <Grid RowDefinitions="Auto,Auto,*">
+            <Grid RowDefinitions="Auto,Auto,Auto,*">
 
               <!-- Cuadro de Búsqueda -->
               <TextBox Grid.Row="0" Text="{Binding TestPointSearchQuery}"
@@ -568,13 +568,16 @@
               <!-- Contador de Diagramas -->
               <Border Grid.Row="1" Background="#0A180E" BorderBrush="#00CC44" BorderThickness="1" CornerRadius="3" Padding="8,4" Margin="0,0,0,8">
                 <Grid ColumnDefinitions="*,Auto">
-                  <TextBlock Text="PUNTOS DE PRUEBA INDEXADOS" FontSize="10" FontWeight="Bold" Foreground="#00FF66" VerticalAlignment="Center"/>
-                  <TextBlock Grid.Column="1" Text="{Binding TestPointsList.Count, StringFormat='{}{0} Modelos'}" FontSize="10" FontWeight="Bold" Foreground="#FFFFFF" VerticalAlignment="Center"/>
+                  <TextBlock Text="IMÁGENES DE REFERENCIA INDEXADAS" FontSize="10" FontWeight="Bold" Foreground="#00FF66" VerticalAlignment="Center"/>
+                  <TextBlock Grid.Column="1" Text="{Binding TestPointsList.Count, StringFormat='{}{0} archivos'}" FontSize="10" FontWeight="Bold" Foreground="#FFFFFF" VerticalAlignment="Center"/>
                 </Grid>
               </Border>
 
+              <TextBlock Grid.Row="2" Text="Nombre, modelo y revisión no verificados. No uses una imagen como instrucción para intervenir hardware."
+                         FontSize="10" Foreground="#FFD600" TextWrapping="Wrap" Margin="0,0,0,8"/>
+
               <!-- Lista Seleccionable de TestPoints -->
-              <ListBox Grid.Row="2" ItemsSource="{Binding TestPointsList}" SelectedItem="{Binding SelectedTestPoint}"
+              <ListBox Grid.Row="3" ItemsSource="{Binding TestPointsList}" SelectedItem="{Binding SelectedTestPoint}"
                        Background="Transparent" BorderThickness="0" Padding="0">
                 <ListBox.ItemTemplate>
                   <DataTemplate>
@@ -603,7 +606,7 @@
               <!-- Barra Superior de Información y Acción del Visor -->
               <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
                 <StackPanel Grid.Column="0">
-                  <TextBlock Text="{Binding SelectedTestPoint.ModelName, FallbackValue='Selecciona un modelo para ver su TestPoint'}"
+                  <TextBlock Text="{Binding SelectedTestPoint.ModelName, FallbackValue='Selecciona una imagen de referencia'}"
                              FontSize="14" FontWeight="Bold" Foreground="#FFFFFF"/>
                   <TextBlock Text="{Binding TestPointDetails}" FontSize="11" Foreground="#00FF66" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
@@ -623,12 +626,10 @@
                   <Border IsVisible="{Binding !HasSelectedTestPoint}" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="500" Padding="20">
                     <StackPanel Spacing="10" HorizontalAlignment="Center">
                       <TextBlock Text="🔬" FontSize="36" HorizontalAlignment="Center"/>
-                      <TextBlock Text="GUÍA DE TESTPOINT Y FORZADO BROM / EDL" FontWeight="Bold" FontSize="13" Foreground="#00FF66" HorizontalAlignment="Center"/>
-                      <TextBlock Text="1. Selecciona un modelo en la lista de la izquierda para cargar la fotografía de placa." Foreground="#E0FFE8" FontSize="11"/>
-                      <TextBlock Text="2. Desconecta la batería del terminal antes de operar en banco." Foreground="#E0FFE8" FontSize="11"/>
-                      <TextBlock Text="3. Realiza un puente metálico con pinzas entre el punto TP dorado y masa GND (blindaje)." Foreground="#E0FFE8" FontSize="11"/>
-                      <TextBlock Text="4. Conecta el cable USB Tipo C al PC manteniendo el contacto 3 segundos." Foreground="#E0FFE8" FontSize="11"/>
-                      <TextBlock Text="5. Al escuchar el sonido de conexión USB en el PC, retira las pinzas e inicia el enlace." Foreground="#00FF66" FontSize="11" FontWeight="Bold"/>
+                      <TextBlock Text="REFERENCIAS DE PLACA NO VERIFICADAS" FontWeight="Bold" FontSize="13" Foreground="#FFD600" HorizontalAlignment="Center"/>
+                      <TextBlock Text="La identidad del modelo, revisión de placa y procedencia de cada imagen requieren confirmación independiente." Foreground="#E0FFE8" FontSize="11"/>
+                      <TextBlock Text="No realices contactos, puentes ni conexiones basándote únicamente en estas imágenes." Foreground="#FFD600" FontSize="11" FontWeight="Bold"/>
+                      <TextBlock Text="Consulta documentación oficial y personal cualificado para cualquier intervención física." Foreground="#E0FFE8" FontSize="11"/>
                     </StackPanel>
                   </Border>
                 </Grid>

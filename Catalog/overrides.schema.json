@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tensa-zangetsu.local/schemas/overrides.schema.json",
+  "title": "Explicit asset metadata overrides",
+  "type": "array",
+  "items": {
+    "allOf": [
+      { "$ref": "./asset-metadata.schema.json" },
+      {
+        "type": "object",
+        "required": ["relativePath"],
+        "properties": {
+          "relativePath": { "type": "string", "minLength": 3, "pattern": "^[A-Za-z0-9_-]+/.+$" }
+        }
+      }
+    ]
+  }
+}

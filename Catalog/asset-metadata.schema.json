@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tensa-zangetsu.local/schemas/asset-metadata.schema.json",
+  "title": "Asset metadata sidecar",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": {
+      "enum": [
+        "Unknown", "BinaryUnknown", "MtkDownloadAgentCandidate", "PreloaderCandidate",
+        "FirehoseProgrammerCandidate", "SprdFdlCandidate", "Scatter",
+        "FirehoseRawProgram", "FirehosePatch", "PacPackageCandidate",
+        "SamsungPitCandidate", "FirmwareArchiveCandidate", "TestPointImage",
+        "Image", "MetadataSidecar"
+      ]
+    },
+    "brand": { "type": "string", "minLength": 1 },
+    "soc": { "type": "string", "minLength": 1 },
+    "modelCodes": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "boardRevision": { "type": "string", "minLength": 1 },
+    "protocolFamily": { "type": "string", "minLength": 1 },
+    "bitConstraint": { "type": "string", "minLength": 1 },
+    "androidConstraint": { "type": "string", "minLength": 1 },
+    "hyperOsConstraint": { "type": "string", "minLength": 1 },
+    "storageConstraint": { "type": "string", "minLength": 1 },
+    "bundleId": { "type": "string", "minLength": 1 },
+    "bundleRole": { "type": "string", "minLength": 1 },
+    "provenance": { "type": "string", "minLength": 1 },
+    "verificationStatus": {
+      "enum": ["ReferenceOnly", "IndexedUnverified", "ImplementedUntested", "Verified", "Unavailable"]
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "verificationStatus": { "const": "Verified" } }, "required": ["verificationStatus"] },
+      "then": { "required": ["provenance"] }
+    }
+  ]
+}

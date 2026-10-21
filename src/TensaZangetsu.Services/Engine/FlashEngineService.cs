@@ -539,11 +539,18 @@ public class FlashEngineService
 
     public List<RomPartitionEntry> InspectRomPackage(string packagePath)
     {
+        var entries = InspectRomPackageOffline(packagePath);
+        Log(LogLevel.Success, $"[ROM] '{Path.GetFileName(packagePath)}' abierto en streaming: {entries.Count} particiones ({entries.Count(x => x.IsLoader)} loaders).");
+        return entries;
+    }
+
+    public static List<RomPartitionEntry> InspectRomPackageOffline(string packagePath)
+    {
         if (!File.Exists(packagePath))
             throw new FileNotFoundException("No se encontró el archivo de ROM.", packagePath);
 
         using var archive = FirmwareUnpacker.Open(packagePath);
-        var entries = archive.Entries.Select(e =>
+        return archive.Entries.Select(e =>
         {
             string fn = e.Name;
             bool isLoader = IsLoaderName(e.Name, fn);
@@ -556,9 +563,6 @@ public class FlashEngineService
                 Category: ClassifyCategory(e.Name, fn),
                 IsLoader: isLoader);
         }).ToList();
-
-        Log(LogLevel.Success, $"[ROM] '{Path.GetFileName(packagePath)}' abierto en streaming: {entries.Count} particiones ({entries.Count(x => x.IsLoader)} loaders).");
-        return entries;
     }
 
     public async Task<List<string>> ExtractOnlyLoadersFromRomAsync(string packagePath, CancellationToken ct = default)

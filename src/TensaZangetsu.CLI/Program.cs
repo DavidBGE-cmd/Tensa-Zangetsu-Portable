@@ -2,6 +2,9 @@
 using TensaZangetsu.CLI.Localization;
 using Serilog;
 
+if (args.Length > 0 && args[0].Equals("assets", StringComparison.OrdinalIgnoreCase))
+    return await AssetCommands.RunAsync(args[1..]);
+
 if (args.FirstOrDefault() == WindowsMtkDriverBackend.HelperSwitch)
 {
     try

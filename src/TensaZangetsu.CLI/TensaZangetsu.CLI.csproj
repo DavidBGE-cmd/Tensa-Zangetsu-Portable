@@ -10,6 +10,7 @@
     <RootNamespace>TensaZangetsu.CLI</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\TensaZangetsu.AssetIndexing\TensaZangetsu.AssetIndexing.csproj" />
     <ProjectReference Include="..\TensaZangetsu.Firmware\TensaZangetsu.Firmware.csproj" />
     <ProjectReference Include="..\TensaZangetsu.Android.Lp\TensaZangetsu.Android.Lp.csproj" />
     <ProjectReference Include="..\TensaZangetsu.FileSystem.Erofs\TensaZangetsu.FileSystem.Erofs.csproj" />

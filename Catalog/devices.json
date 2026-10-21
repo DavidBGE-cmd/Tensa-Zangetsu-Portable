@@ -1,0 +1,53 @@
+[
+  {
+    "id": "reference-xiaomi-mi-6-sagit",
+    "brand": "Xiaomi",
+    "marketingName": "Mi 6",
+    "modelCodes": ["Mi 6"],
+    "codeNames": ["Sagit"],
+    "platform": "Qualcomm",
+    "soc": "Snapdragon 835",
+    "boardRevisions": [],
+    "storageTypes": [],
+    "connectionModes": [],
+    "sourceReferences": [
+      "User-provided prompt example; UnlockTool models page was not independently accessible on 2026-10-20."
+    ],
+    "verificationStatus": "ReferenceOnly",
+    "capabilities": []
+  },
+  {
+    "id": "reference-oppo-a37fw-neo-9",
+    "brand": "Oppo",
+    "marketingName": "Neo 9",
+    "modelCodes": ["A37fw"],
+    "codeNames": [],
+    "platform": "Qualcomm",
+    "soc": "Snapdragon 410",
+    "boardRevisions": [],
+    "storageTypes": [],
+    "connectionModes": [],
+    "sourceReferences": [
+      "User-provided prompt example; UnlockTool models page was not independently accessible on 2026-10-20."
+    ],
+    "verificationStatus": "ReferenceOnly",
+    "capabilities": []
+  },
+  {
+    "id": "reference-huawei-enjoy-6s-dig-tl10",
+    "brand": "Huawei",
+    "marketingName": "Enjoy 6S",
+    "modelCodes": ["DIG-TL10"],
+    "codeNames": [],
+    "platform": "Qualcomm",
+    "soc": "Snapdragon 435",
+    "boardRevisions": [],
+    "storageTypes": [],
+    "connectionModes": [],
+    "sourceReferences": [
+      "User-provided prompt example; UnlockTool models page was not independently accessible on 2026-10-20."
+    ],
+    "verificationStatus": "ReferenceOnly",
+    "capabilities": []
+  }
+]

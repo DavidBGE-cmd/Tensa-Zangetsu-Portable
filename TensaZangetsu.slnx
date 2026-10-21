@@ -1,4 +1,4 @@
-﻿<Solution>
+<Solution>
   <Folder Name="/Abstractions/">
     <Project Path="src/TensaZangetsu.Abstractions/TensaZangetsu.Abstractions.csproj" />
     <Project Path="src/TensaZangetsu.BlockDevice.Abstractions/TensaZangetsu.BlockDevice.Abstractions.csproj" />
@@ -37,6 +37,9 @@
     <Project Path="src/TensaZangetsu.Protocol.Sprd/TensaZangetsu.Protocol.Sprd.csproj" />
     <Project Path="src/TensaZangetsu.Protocol.Mtk.Extensions/TensaZangetsu.Protocol.Mtk.Extensions.csproj" />
   </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/TensaZangetsu.AssetIndexing/TensaZangetsu.AssetIndexing.csproj" />
+  </Folder>
   <Folder Name="/Transport/">
     <Project Path="src/TensaZangetsu.Transport.LibUsb/TensaZangetsu.Transport.LibUsb.csproj" />
     <Project Path="src/TensaZangetsu.Transport.SerialPort/TensaZangetsu.Transport.SerialPort.csproj" />
@@ -47,6 +50,9 @@
   <Folder Name="/Apps/">
     <Project Path="src/TensaZangetsu.CLI/TensaZangetsu.CLI.csproj" />
     <Project Path="src/TensaZangetsu.App/TensaZangetsu.App.csproj" />
+  </Folder>
+  <Folder Name="/scratch/">
+    <Project Path="scratch/AssetIndexer/AssetIndexer.csproj" />
   </Folder>
   <Folder Name="/Services/">
     <Project Path="src/TensaZangetsu.Services/TensaZangetsu.Services.csproj" />

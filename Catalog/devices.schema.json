@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tensa-zangetsu.local/schemas/devices.schema.json",
+  "title": "Device catalog",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "id",
+      "brand",
+      "marketingName",
+      "modelCodes",
+      "codeNames",
+      "boardRevisions",
+      "storageTypes",
+      "connectionModes",
+      "sourceReferences",
+      "verificationStatus",
+      "capabilities"
+    ],
+    "properties": {
+      "id": {
+        "type": "string",
+        "minLength": 1
+      },
+      "brand": {
+        "type": "string",
+        "minLength": 1
+      },
+      "marketingName": {
+        "type": "string",
+        "minLength": 1
+      },
+      "modelCodes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "codeNames": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "platform": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "soc": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "boardRevisions": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "storageTypes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "connectionModes": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "sourceReferences": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "verificationStatus": {
+        "enum": [
+          "ReferenceOnly",
+          "IndexedUnverified",
+          "ImplementedUntested",
+          "Verified",
+          "Unavailable"
+        ]
+      },
+      "capabilities": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operationId",
+            "implementationStatus",
+            "compatibleModes",
+            "securityConstraints",
+            "firmwareConstraints",
+            "evidence"
+          ],
+          "properties": {
+            "operationId": {
+              "type": "string"
+            },
+            "implementationStatus": {
+              "enum": [
+                "ReferenceOnly",
+                "IndexedUnverified",
+                "ImplementedUntested",
+                "Verified",
+                "Unavailable"
+              ]
+            },
+            "compatibleModes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "securityConstraints": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "firmwareConstraints": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "backendId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "lastVerifiedAt": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    }
+  }
+}
