@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
@@ -19,9 +19,11 @@ public class AdbFastbootService : IAdbFastbootService
     public string AdbExecutablePath { get; private set; } = "adb";
     public string FastbootExecutablePath { get; private set; } = "fastboot";
     public bool IsMonitoring => _monitorCts != null;
+    private readonly IProcessRunner _runner;
 
-    public AdbFastbootService(string? customToolsDirectory = null)
+    public AdbFastbootService(string? customToolsDirectory = null, IProcessRunner? runner = null)
     {
+        _runner = runner ?? new SystemProcessRunner();
         LocateExecutables(customToolsDirectory);
     }
 
@@ -826,45 +828,44 @@ public class AdbFastbootService : IAdbFastbootService
     }
 
     // ================= PROCESS RUNNER HELPER =================
-    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunProcessAsync(
+    private async Task<(int ExitCode, string StdOut, string StdErr)> RunProcessAsync(
         string executable,
         string arguments,
         CancellationToken ct = default)
     {
-        try
+        var args = SplitCommandLineArguments(arguments);
+        var result = await _runner.RunAsync(executable, args, ct: ct).ConfigureAwait(false);
+        return (result.ExitCode, result.StandardOutput, result.StandardError);
+    }
+
+    private static List<string> SplitCommandLineArguments(string commandLine)
+    {
+        var args = new List<string>();
+        if (string.IsNullOrWhiteSpace(commandLine)) return args;
+
+        var sb = new StringBuilder();
+        bool inQuotes = false;
+        for (int i = 0; i < commandLine.Length; i++)
         {
-            using var proc = new Process();
-            proc.StartInfo = new ProcessStartInfo
+            char c = commandLine[i];
+            if (c == '"')
             {
-                FileName = executable,
-                Arguments = arguments,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            proc.Start();
-
-            var stdoutTask = proc.StandardOutput.ReadToEndAsync(ct);
-            var stderrTask = proc.StandardError.ReadToEndAsync(ct);
-
-            // Timeout de 15 segundos para no colgar el proceso
-            var completed = await Task.WhenAny(proc.WaitForExitAsync(ct), Task.Delay(15000, ct));
-            if (!proc.HasExited)
-            {
-                try { proc.Kill(); } catch { }
-                return (-1, "", "Tiempo de espera agotado (Timeout).");
+                inQuotes = !inQuotes;
             }
-
-            string stdout = await stdoutTask;
-            string stderr = await stderrTask;
-
-            return (proc.ExitCode, stdout, stderr);
+            else if (c == ' ' && !inQuotes)
+            {
+                if (sb.Length > 0)
+                {
+                    args.Add(sb.ToString());
+                    sb.Clear();
+                }
+            }
+            else
+            {
+                sb.Append(c);
+            }
         }
-        catch (Exception ex)
-        {
-            return (-1, "", ex.Message);
-        }
+        if (sb.Length > 0) args.Add(sb.ToString());
+        return args;
     }
 }

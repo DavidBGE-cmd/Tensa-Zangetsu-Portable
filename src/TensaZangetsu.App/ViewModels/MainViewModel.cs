@@ -15,6 +15,7 @@ using TensaZangetsu.Services.Engine;
 using TensaZangetsu.Services.Firmware;
 using TensaZangetsu.Services.Loaders;
 using TensaZangetsu.Services.Operations;
+using CatalogDeviceModel = TensaZangetsu.Services.Catalog.DeviceModel;
 
 namespace TensaZangetsu.App.ViewModels;
 
@@ -48,19 +49,162 @@ public sealed partial class FlashPartitionRow : ObservableObject
 
 public partial class MainViewModel : ViewModelBase
 {
-    private readonly FlashEngineService _engineService;
-    private readonly AutoLoaderResolverService _loaderResolver;
-    private readonly AssetsManifestService _manifestService = new();
+    private readonly ApplicationEngine _engine;
     private readonly DevicePortTrapService _portTrapService = new();
-    private readonly MtkAuthenticationService _authService;
-    private readonly PythonScriptRunnerService _pythonRunner;
-    private readonly MtkLkImageInjector _lkInjector;
-    private readonly QualcommEdlService _edlService = new();
-    private readonly MtkTestPointCatalogService _testPointService = new();
     private readonly StorageDialogService _storageDialog = new();
     private readonly List<FlashPartitionRow> _allPartitions = [];
-    private readonly List<string> _allKnownModels = [];
+    private readonly List<CatalogDeviceModel> _allKnownModels = [];
+    private IReadOnlyList<TestPointEntry> _indexedTestPoints = [];
+    private readonly SemaphoreSlim _initializationGate = new(1, 1);
+    private readonly SemaphoreSlim _portRefreshGate = new(1, 1);
+    private bool _isInitialized;
     private CancellationTokenSource? _currentOperationCts;
+    private CancellationTokenSource? _scatterLoadCts;
+    private Task _scatterLoadTask = Task.CompletedTask;
+    private CancellationTokenSource? _testPointPreviewCts;
+    private Task _testPointPreviewTask = Task.CompletedTask;
+
+    public MainViewModel() : this(new ApplicationEngine())
+    {
+    }
+
+    public MainViewModel(ApplicationEngine engine)
+    {
+        _engine = engine ?? throw new ArgumentNullException(nameof(engine));
+
+        _engine.StateChanged += (prev, curr, reason) =>
+        {
+            PostToUi(() =>
+            {
+                OnEngineStateChanged(prev, curr, reason);
+            });
+        };
+
+        _engine.LogEmitted += (msg, lvl, col) =>
+        {
+            AddLog(msg, col ?? "#ECEFF1");
+        };
+
+        _engine.ProgressUpdated += (pct, status) =>
+        {
+            PostToUi(() =>
+            {
+                ProgressValue = (int)pct;
+                ProgressStatusText = status;
+            });
+        };
+
+        _engine.DeviceChanged += dev =>
+        {
+            PostToUi(() =>
+            {
+                IsDeviceOnline = dev != null && dev.IsConnected;
+                if (dev != null)
+                {
+                    ConnectionStatusBadge = $"ONLINE • {dev.Description} ({dev.PortOrUsbPath})";
+                    ConnectionBadgeColor = "#00FF66";
+                }
+                else
+                {
+                    ConnectionStatusBadge = "STANDBY • No device connected";
+                    ConnectionBadgeColor = "#264D31";
+                }
+            });
+        };
+    }
+
+    public static Action<Action>? CustomUiDispatcher { get; set; }
+
+    private static void PostToUi(Action action)
+    {
+        if (CustomUiDispatcher is not null)
+        {
+            CustomUiDispatcher(action);
+            return;
+        }
+
+        if (Dispatcher.UIThread is { } dispatcher)
+        {
+            if (dispatcher.CheckAccess())
+            {
+                action();
+            }
+            else
+            {
+                dispatcher.Post(action);
+            }
+        }
+        else
+        {
+            action();
+        }
+    }
+
+    private void OnEngineStateChanged(OperationState prev, OperationState curr, string? reason)
+    {
+        switch (curr)
+        {
+            case OperationState.Idle:
+                ConnectionStatusBadge = SelectedLoader == "Demo / Emulación Offline"
+                    ? "STANDBY • [MODO SIMULACIÓN] Emulación Offline"
+                    : "STANDBY • Hardware backend unavailable";
+                ConnectionBadgeColor = SelectedLoader == "Demo / Emulación Offline" ? "#FFD700" : "#264D31";
+                break;
+            case OperationState.WaitingForDevice:
+                ConnectionStatusBadge = "LISTENING • Waiting for device...";
+                ConnectionBadgeColor = "#FFD600";
+                break;
+            case OperationState.CandidateDetected:
+                ConnectionStatusBadge = "DETECTED • Candidate device on bus";
+                ConnectionBadgeColor = "#00E5FF";
+                break;
+            case OperationState.AcquiringTransport:
+            case OperationState.Handshaking:
+            case OperationState.Identifying:
+            case OperationState.ResolvingLoader:
+            case OperationState.Authorizing:
+            case OperationState.LoadingAgent:
+                ConnectionStatusBadge = $"SYNC • {curr}";
+                ConnectionBadgeColor = "#00E5FF";
+                break;
+            case OperationState.Ready:
+                ConnectionStatusBadge = "ONLINE • Session active and ready";
+                ConnectionBadgeColor = "#00FF66";
+                break;
+            case OperationState.Executing:
+                ConnectionStatusBadge = $"BUSY • Executing ({reason ?? "Operation"})";
+                ConnectionBadgeColor = "#00E5FF";
+                break;
+            case OperationState.Completed:
+                ConnectionStatusBadge = "SUCCESS • Operation completed";
+                ConnectionBadgeColor = "#00FF66";
+                break;
+            case OperationState.Cancelled:
+                ConnectionStatusBadge = "CANCELLED • Operation cancelled";
+                ConnectionBadgeColor = "#FFD600";
+                break;
+            case OperationState.Failed:
+                ConnectionStatusBadge = $"ERROR • {reason ?? "Failed"}";
+                ConnectionBadgeColor = "#FF3344";
+                break;
+            case OperationState.Unsupported:
+                ConnectionStatusBadge = "UNSUPPORTED • Operation unavailable";
+                ConnectionBadgeColor = "#FFD600";
+                break;
+            case OperationState.TimedOut:
+                ConnectionStatusBadge = "TIMEOUT • Device unresponsive";
+                ConnectionBadgeColor = "#FF3344";
+                break;
+            case OperationState.Disconnected:
+                ConnectionStatusBadge = "DISCONNECTED • Device lost";
+                ConnectionBadgeColor = "#7A2424";
+                break;
+            case OperationState.RecoveryRequired:
+                ConnectionStatusBadge = "RECOVERY REQUIRED • Manual action needed";
+                ConnectionBadgeColor = "#FF1744";
+                break;
+        }
+    }
 
     // ================== NAVEGACIÓN MODULAR DE ESTUDIO (TABS LATERALES) ==================
     [ObservableProperty]
@@ -92,7 +236,7 @@ public partial class MainViewModel : ViewModelBase
 
     // ================== ESTADO DE CONEXIÓN EN TIEMPO REAL ==================
     [ObservableProperty]
-    private string _connectionStatusBadge = "STANDBY • USB Esperando Dispositivo";
+    private string _connectionStatusBadge = "STANDBY • Hardware backend unavailable";
 
     [ObservableProperty]
     private string _connectionBadgeColor = "#264D31";
@@ -111,20 +255,31 @@ public partial class MainViewModel : ViewModelBase
     private string _selectedBase = "Mediatek";
 
     [ObservableProperty]
-    private ObservableCollection<string> _availableBases = ["Mediatek", "Qualcomm", "Unisoc", "Samsung"];
+    private ObservableCollection<string> _availableBases = ["Mediatek", "Qualcomm", "Unisoc", "Samsung", "ADB", "Fastboot"];
 
     [ObservableProperty]
-    private string _selectedLoader = "Brom V1";
+    private string _selectedLoader = "No verified backend";
 
     [ObservableProperty]
     private ObservableCollection<string> _availableLoaders = [
-        "Brom V1",
-        "Brom V2",
-        "DA V5 (XFlash)",
-        "DA V6 (XML)",
-        "Auto-Detect DA",
+        "No verified backend",
         "Demo / Emulación Offline"
     ];
+
+    partial void OnSelectedLoaderChanged(string value)
+    {
+        if (value == "Demo / Emulación Offline")
+        {
+            ConnectionStatusBadge = "STANDBY • [MODO SIMULACIÓN] Emulación Offline";
+            ConnectionBadgeColor = "#FFD700";
+            AddLog("💡 [MODO SIMULACIÓN] Backend de simulación offline seleccionado. Las operaciones se ejecutarán de forma emulada sin abrir puertos físicos.", "#80FF9E");
+        }
+        else
+        {
+            ConnectionStatusBadge = "STANDBY • Hardware backend unavailable";
+            ConnectionBadgeColor = "#264D31";
+        }
+    }
 
     // ================== FILTRO POR MARCA Y MODELO ==================
     [ObservableProperty]
@@ -152,21 +307,21 @@ public partial class MainViewModel : ViewModelBase
     private void FilterModelsByBrand()
     {
         AvailableDeviceModels.Clear();
-        if (SelectedBrand == "Todas")
+        IEnumerable<CatalogDeviceModel> devices = _allKnownModels;
+        if (!SelectedBrand.Equals("Todas", StringComparison.OrdinalIgnoreCase))
         {
-            foreach (var m in _allKnownModels) AvailableDeviceModels.Add(m);
+            string[] brandFilters = SelectedBrand
+                .Split('(')[0]
+                .Split('/')
+                .Select(brand => brand.Trim())
+                .Where(brand => brand.Length > 0)
+                .ToArray();
+            devices = devices.Where(device => brandFilters.Any(brand =>
+                device.Brand.Contains(brand, StringComparison.OrdinalIgnoreCase)));
         }
-        else
-        {
-            string cleanBrand = SelectedBrand.Split('/')[0].Trim().ToUpperInvariant();
-            var filtered = _allKnownModels.Where(m =>
-            {
-                var variants = _loaderResolver.GetVariantsForModel(m);
-                return variants.Any(v => v.Brand.ToUpperInvariant().Contains(cleanBrand) || v.DisplayLabel.ToUpperInvariant().Contains(cleanBrand)) ||
-                       m.ToUpperInvariant().Contains(cleanBrand);
-            });
-            foreach (var m in filtered) AvailableDeviceModels.Add(m);
-        }
+
+        foreach (CatalogDeviceModel device in devices)
+            AvailableDeviceModels.Add(device.Name);
 
         if (AvailableDeviceModels.Count > 0)
             SelectedDeviceModel = AvailableDeviceModels[0];
@@ -191,24 +346,24 @@ public partial class MainViewModel : ViewModelBase
     private bool _hasMultipleDaVariants;
 
     [ObservableProperty]
-    private bool _isAutoDaFallbackEnabled = true;
+    private bool _isAutoDaFallbackEnabled;
 
     [ObservableProperty]
-    private string _daVariantSummary = "Selecciona un modelo para ver sus variantes de Download Agent.";
+    private string _daVariantSummary = "No hay variantes de loader verificadas.";
 
     [RelayCommand]
     public void FallbackToNextDaVariant()
     {
-        if (AvailableDaVariants.Count <= 1) return;
-        int currentIndex = SelectedDaVariant != null ? AvailableDaVariants.IndexOf(SelectedDaVariant) : -1;
-        int nextIndex = (currentIndex + 1) % AvailableDaVariants.Count;
-        SelectedDaVariant = AvailableDaVariants[nextIndex];
-        AddLog($"[AutoLoader Fallback] Alternando a variante: {SelectedDaVariant.DisplayLabel}", "#FFD600");
+        AddLog("Unavailable: no verified loader variants are configured for this profile.", "#FFD600");
     }
 
     partial void OnSelectedDeviceModelChanged(string? value)
     {
         AvailableDaVariants.Clear();
+        _engine.ResetSession("Model changed by user");
+        _allPartitions.Clear();
+        Partitions.Clear();
+
         if (string.IsNullOrWhiteSpace(value))
         {
             HasMultipleDaVariants = false;
@@ -217,30 +372,12 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var variants = _loaderResolver.GetVariantsForModel(value);
-        foreach (var v in variants)
-        {
-            AvailableDaVariants.Add(v);
-        }
-
-        HasMultipleDaVariants = AvailableDaVariants.Count > 1;
-        SelectedDaVariant = AvailableDaVariants.FirstOrDefault();
-
-        if (SelectedDaVariant != null)
-        {
-            CustomDaPath = SelectedDaVariant.FilePath;
-            if (!string.IsNullOrEmpty(SelectedDaVariant.AssociatedAuthPath))
-                CustomAuthPath = SelectedDaVariant.AssociatedAuthPath;
-            DaVariantSummary = $"Patch/OS: {SelectedDaVariant.SecurityPatchOrOs} | BIT: {SelectedDaVariant.BinaryBit ?? "N/A"} | Rol: {SelectedDaVariant.OperationRole} | Stage: {SelectedDaVariant.ConnectionStage}";
-            AddLog($"[AutoLoader] Modelo: {value} -> Variante activa: {SelectedDaVariant.DisplayLabel}", "#00E5FF");
-        }
-
-        // Buscar automáticamente diagrama de TestPoint correspondiente
-        var matchingTp = _testPointService.FindForModel(value) ?? _testPointService.Search(value).FirstOrDefault();
-        if (matchingTp != null)
-        {
-            SelectedTestPoint = matchingTp;
-        }
+        SelectedDaVariant = null;
+        HasMultipleDaVariants = false;
+        CustomDaPath = null;
+        CustomAuthPath = null;
+        DaVariantSummary = "Sin variantes verificadas para el modelo seleccionado.";
+        SelectedTestPoint = null;
     }
 
     partial void OnSelectedDaVariantChanged(MtkDaVariant? value)
@@ -267,36 +404,66 @@ public partial class MainViewModel : ViewModelBase
     private Bitmap? _selectedTestPointBitmap;
 
     [ObservableProperty]
-    private string _testPointDetails = "Selecciona un modelo en la lista para visualizar el diagrama de TestPoint.";
+    private string _testPointDetails = "Las imágenes y su asociación a modelos/revisiones no están verificadas.";
 
     [ObservableProperty]
     private bool _hasSelectedTestPoint;
 
     partial void OnSelectedTestPointChanged(TestPointEntry? value)
     {
+        _testPointPreviewCts?.Cancel();
+        _testPointPreviewCts = null;
         SelectedTestPointBitmap?.Dispose();
         SelectedTestPointBitmap = null;
 
-        if (value == null || !File.Exists(value.FilePath))
+        if (value is null)
         {
             HasSelectedTestPoint = false;
-            TestPointDetails = "Selecciona un modelo en la lista para visualizar el diagrama de TestPoint.";
+            TestPointDetails = "Las imágenes y su asociación a modelos/revisiones no están verificadas.";
             return;
         }
 
+        HasSelectedTestPoint = false;
+        TestPointDetails = $"Cargando diagrama: {value.ModelName}...";
+        var previewCts = new CancellationTokenSource();
+        _testPointPreviewCts = previewCts;
+        _testPointPreviewTask = LoadTestPointPreviewAsync(value, previewCts);
+    }
+
+    private async Task LoadTestPointPreviewAsync(TestPointEntry entry, CancellationTokenSource previewCts)
+    {
+        Bitmap? bitmap = null;
         try
         {
-            using var stream = File.OpenRead(value.FilePath);
-            SelectedTestPointBitmap = new Bitmap(stream);
+            bitmap = await Task.Run(() =>
+            {
+                previewCts.Token.ThrowIfCancellationRequested();
+                using var stream = File.OpenRead(entry.FilePath);
+                return new Bitmap(stream);
+            }, previewCts.Token);
+            previewCts.Token.ThrowIfCancellationRequested();
+
+            SelectedTestPointBitmap = bitmap;
+            bitmap = null;
             HasSelectedTestPoint = true;
-            TestPointDetails = $"Dispositivo: {value.ModelName} | Marca: {value.Brand} | Formato: {value.ImageFormat.ToUpperInvariant()} ({FormatBytes(value.FileSizeBytes)})";
-            AddLog($"[TestPoint] Diagrama cargado: {value.ModelName} ({value.Brand})", "#00E5FF");
+            TestPointDetails = $"Imagen no verificada: {entry.ModelName} | Marca inferida: {entry.Brand} | {entry.ImageFormat.ToUpperInvariant()} ({FormatBytes(entry.FileSizeBytes)})";
+            AddLog($"[TestPoint] Diagrama cargado: {entry.ModelName} ({entry.Brand})", "#00E5FF");
+        }
+        catch (OperationCanceledException) when (previewCts.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
             HasSelectedTestPoint = false;
             TestPointDetails = $"Error al cargar imagen: {ex.Message}";
             AddLog($"[TestPoint] Error al abrir imagen: {ex.Message}", "#FF1744");
+        }
+        finally
+        {
+            bitmap?.Dispose();
+            if (ReferenceEquals(_testPointPreviewCts, previewCts))
+                _testPointPreviewCts = null;
+            previewCts.Dispose();
         }
     }
 
@@ -307,28 +474,43 @@ public partial class MainViewModel : ViewModelBase
 
     private void FilterTestPoints()
     {
-        var filtered = _testPointService.Search(TestPointSearchQuery);
+        IEnumerable<TestPointEntry> filtered = _indexedTestPoints;
+        if (!string.IsNullOrWhiteSpace(TestPointSearchQuery))
+        {
+            string query = TestPointSearchQuery.Trim();
+            filtered = filtered.Where(item =>
+                item.ModelName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                item.Brand.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
+
         TestPointsList.Clear();
         foreach (var item in filtered)
-        {
             TestPointsList.Add(item);
-        }
-        if (SelectedTestPoint == null && TestPointsList.Count > 0)
-        {
-            SelectedTestPoint = TestPointsList[0];
-        }
+
+        if (SelectedTestPoint is not null && !TestPointsList.Contains(SelectedTestPoint))
+            SelectedTestPoint = null;
     }
 
     [RelayCommand]
-    public void OpenTestPointExternal()
+    public Task OpenTestPointExternalAsync()
     {
-        if (SelectedTestPoint != null && File.Exists(SelectedTestPoint.FilePath))
+        string? filePath = SelectedTestPoint?.FilePath;
+        if (filePath is null)
+            return Task.CompletedTask;
+
+        return Task.Run(() =>
         {
             try
             {
+                if (!File.Exists(filePath))
+                {
+                    AddLog("El archivo de imagen seleccionado ya no existe.", "#FFAB00");
+                    return;
+                }
+
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = SelectedTestPoint.FilePath,
+                    FileName = filePath,
                     UseShellExecute = true
                 });
             }
@@ -336,7 +518,7 @@ public partial class MainViewModel : ViewModelBase
             {
                 AddLog($"Error al abrir visor externo: {ex.Message}", "#FFAB00");
             }
-        }
+        });
     }
 
     [RelayCommand]
@@ -346,7 +528,6 @@ public partial class MainViewModel : ViewModelBase
         {
             SelectedNavigationModule = 3; // Cambiar a pestaña TestPoints
             TestPointSearchQuery = SelectedDeviceModel;
-            FilterTestPoints();
         }
     }
 
@@ -354,35 +535,20 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public async Task FastbootToEdlAsync()
     {
-        AddLog("▶ [EDL] Ejecutando secuencia en cascada Fastboot -> Qualcomm EDL 9008...", "#00E5FF");
-        bool ok = await _edlService.RebootToEdlFromFastbootAsync(msg => AddLog(msg, "#00E5FF"));
-        RefreshPorts();
+        await ExecuteServicingOperationAsync("FastbootToEdl");
     }
 
     [RelayCommand]
     public async Task AdbToEdlAsync()
     {
-        AddLog("▶ [EDL] Ejecutando comando ADB -> Qualcomm EDL 9008...", "#00E5FF");
-        bool ok = await _edlService.RebootToEdlFromAdbAsync(msg => AddLog(msg, "#00E5FF"));
-        RefreshPorts();
+        await ExecuteServicingOperationAsync("AdbToEdl");
     }
 
     // ================== COMANDO REPARACIÓN GPT (AMONET) ==================
     [RelayCommand]
-    public void AmonetGptFix()
+    public async Task AmonetGptFixAsync()
     {
-        try
-        {
-            AddLog("▶ [Amonet GPT] Iniciando reconstrucción y validación de tablas GPT primaria y secundaria...", "#00E5FF");
-            var (pgpt, sgpt) = KaeruAmonetService.ReconstructGpt(totalSectors: 122142720);
-            AddLog($"✔ [Amonet GPT] Cabecera PGPT calculada: {pgpt.Length} bytes (LBA 1, 128 particiones)", "#00E676");
-            AddLog($"✔ [Amonet GPT] Cabecera SGPT calculada: {sgpt.Length} bytes (Backup LBA final)", "#00E676");
-            AddLog("✔ Estructura EFI PART y CRC32 IEEE 802.3 verificadas correctamente.", "#00E676");
-        }
-        catch (Exception ex)
-        {
-            AddLog($"❌ [Amonet GPT] Error al reconstruir tablas: {ex.Message}", "#FF1744");
-        }
+        await ExecuteServicingOperationAsync("AmonetGptFix");
     }
 
     // ================== CUSTOM LOADERS / EXPANDER ==================
@@ -404,7 +570,7 @@ public partial class MainViewModel : ViewModelBase
 
     // ================== BARRA DE ESTADO / PROGRESO ==================
     [ObservableProperty]
-    private string _progressStatusText = "Info/Reboot";
+    private string _progressStatusText = "Idle";
 
     [ObservableProperty]
     private int _progressValue = 0;
@@ -502,78 +668,46 @@ public partial class MainViewModel : ViewModelBase
     private bool _useHighSpeedUsb = true;
 
     [ObservableProperty]
-    private string _detectedChipsetBanner = "Chipset ID : Ready";
-
-    public MainViewModel()
-    {
-        _engineService = new FlashEngineService();
-        _loaderResolver = new AutoLoaderResolverService();
-        _authService = new MtkAuthenticationService();
-        _pythonRunner = new PythonScriptRunnerService();
-        _lkInjector = new MtkLkImageInjector();
-
-        // Enlazar eventos del motor de flasheo
-        _engineService.OnLog += (level, msg) =>
-        {
-            string color = level switch
-            {
-                TensaZangetsu.Services.Engine.LogLevel.Success => "#00FF66",
-                TensaZangetsu.Services.Engine.LogLevel.Warning => "#FFD600",
-                TensaZangetsu.Services.Engine.LogLevel.Error => "#FF3344",
-                TensaZangetsu.Services.Engine.LogLevel.Debug => "#4D7A58",
-                _ => "#00FF66"
-            };
-            AddLog(msg, color);
-        };
-
-        _engineService.OnProgress += (status, val) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                ProgressStatusText = status;
-                ProgressValue = Math.Clamp(val, 0, 100);
-            });
-        };
-
-        RefreshPorts();
-        ShowBannerWelcome();
-
-        // Inicializar catálogo de TestPoints de forma inmediata
-        FilterTestPoints();
-
-        // Cargar catálogo de modelos y variantes Multi-DA en segundo plano
-        Task.Run(() =>
-        {
-            var models = _loaderResolver.GetKnownDeviceModels();
-            Dispatcher.UIThread.Post(() =>
-            {
-                _allKnownModels.Clear();
-                _allKnownModels.AddRange(models);
-                FilterModelsByBrand();
-            });
-        });
-    }
+    private string _detectedChipsetBanner = "Chipset ID : Not detected";
 
     private void ShowBannerWelcome()
     {
-        AddLog("Dear Customer : GSMXTEAM", "#00FF66");
-        AddLog("Activation Plan : Platinum", "#E0FFE8");
-        AddLog("Remaining Days : 360", "#E0FFE8");
-        AddLog("Activation Date : 2026-10-01 06:24:43", "#E0FFE8");
-        AddLog("Activation Expiration : 2027-10-01 06:24:43", "#E0FFE8");
-        AddLog("Your Balance : 999.00", "#00FF66");
-        AddLog("### Notification ### :", "#FF3344");
-        AddLog("TENSA-ZANGETSU PRO • ALL-IN-ONE UNIVERSAL FLASHING & SERVICING SUITE", "#00FF66");
-        AddLog("[World First] Added Unisoc Chip Tiger T7300 [Itel S26 Ultra]", "#80FF9E");
-        AddLog("[HOT] Added MediaTek MT6768 / MT6765 / MT6785 / MT6833 / MT6877 Support", "#80FF9E");
-        AddLog("[World First] Added Qualcomm Snapdragon EDL 9008 + Sahara PBL Dump", "#80FF9E");
-        AddLog("[World First] Added Samsung MediaTek BROM + Preloader Auth / RPMB / OEMINFO", "#80FF9E");
+        AddLog("Tensa-Zangetsu Portable", "#00FF66");
+        AddLog("No device-operation backend is currently verified; hardware actions remain unavailable.", "#FFD600");
+        AddLog("Catalog entries, asset names, and diagrams do not establish device or operation compatibility.", "#E0FFE8");
         AddLog("----------------------------------------------------------------", "#1B4D28");
+    }
+
+    public async Task InitializeAsync()
+    {
+        await _initializationGate.WaitAsync();
+        try
+        {
+            if (_isInitialized)
+                return;
+
+            var modelsTask = Task.Run(() => DeviceCatalogRepository.GetAll().ToArray());
+            var testPointsTask = Task.Run(() => new MtkTestPointCatalogService().GetAll().ToArray());
+            await Task.WhenAll(modelsTask, testPointsTask);
+
+            _allKnownModels.Clear();
+            _allKnownModels.AddRange(await modelsTask);
+            _indexedTestPoints = await testPointsTask;
+            FilterModelsByBrand();
+            FilterTestPoints();
+            ShowBannerWelcome();
+            await RefreshPortsAsync();
+            _isInitialized = true;
+        }
+        finally
+        {
+            _initializationGate.Release();
+        }
     }
 
     public void AddLog(string message, string colorHex = "#ECEFF1")
     {
-        Dispatcher.UIThread.Post(() =>
+        PostToUi(() =>
         {
             string time = DateTime.Now.ToString("HH:mm:ss");
             LogMessages.Add(new LogDisplayItem(time, message, colorHex));
@@ -582,41 +716,33 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    public void RefreshPorts()
+    public async Task RefreshPortsAsync()
     {
-        AvailablePorts.Clear();
+        await _portRefreshGate.WaitAsync();
         try
         {
-            var detected = _engineService.DetectConnectedHardwarePort();
-            if (!string.IsNullOrEmpty(detected.PortName))
-            {
-                AvailablePorts.Add(detected.Description);
-                SelectedPort = detected.Description;
-                ConnectionStatusBadge = $"ONLINE • {detected.Description} ({detected.Platform})";
-                ConnectionBadgeColor = "#00FF66";
-                IsDeviceOnline = true;
-                DetectedChipsetBanner = $"Chipset detectado: {detected.Platform} [{detected.PortName}]";
-                AddLog($"Dispositivo detectado: {detected.Description} ({detected.Platform})", "#00FF66");
-            }
-            else
-            {
-                ConnectionStatusBadge = "STANDBY • USB Esperando Dispositivo";
-                ConnectionBadgeColor = "#264D31";
-                IsDeviceOnline = false;
-            }
-
-            var ports = SerialPort.GetPortNames();
+            string[] ports = await Task.Run(SerialPort.GetPortNames);
+            AvailablePorts.Clear();
             foreach (var p in ports)
-            {
-                if (!AvailablePorts.Any(x => x.Contains(p))) AvailablePorts.Add(p);
-            }
+                AvailablePorts.Add(p);
 
-            if (SelectedPort == null && AvailablePorts.Count > 0)
-                SelectedPort = AvailablePorts[0];
+            if (SelectedPort is null || !AvailablePorts.Contains(SelectedPort))
+                SelectedPort = AvailablePorts.Count > 0 ? AvailablePorts[0] : null;
+
+            ConnectionStatusBadge = "STANDBY • No validated device backend";
+            ConnectionBadgeColor = "#264D31";
+            IsDeviceOnline = false;
         }
         catch (Exception ex)
         {
-            AddLog($"Error al enumerar puertos: {ex.Message}", "#FFAB00");
+            ConnectionStatusBadge = "PORT SCAN FAILED";
+            ConnectionBadgeColor = "#7A2424";
+            IsDeviceOnline = false;
+            AddLog($"Error al enumerar puertos: {ex.Message}", "#FF3344");
+        }
+        finally
+        {
+            _portRefreshGate.Release();
         }
     }
 
@@ -627,12 +753,27 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    public void CancelOperation()
+    public async Task CancelOperationAsync()
     {
+        _engine.CancelCurrentOperation();
+
         if (_currentOperationCts != null && !_currentOperationCts.IsCancellationRequested)
         {
             AddLog("🛑 Solicitando cancelación de operación...", "#FF1744");
             _currentOperationCts.Cancel();
+        }
+
+        if (_scatterLoadCts is not null)
+        {
+            AddLog("Cancelando la lectura local de metadatos...", "#FFD600");
+            _scatterLoadCts.Cancel();
+            await _scatterLoadTask;
+        }
+
+        if (_testPointPreviewCts is not null)
+        {
+            _testPointPreviewCts.Cancel();
+            await _testPointPreviewTask;
         }
     }
 
@@ -691,8 +832,19 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnFirmwareScatterPathChanged(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value) || !File.Exists(value)) return;
-        LoadScatterOrRom(value);
+        _scatterLoadCts?.Cancel();
+        _scatterLoadCts = null;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            _allPartitions.Clear();
+            ApplyPartitionFilter();
+            return;
+        }
+
+        var loadCts = new CancellationTokenSource();
+        _scatterLoadCts = loadCts;
+        _scatterLoadTask = LoadScatterOrRomAsync(value, loadCts);
     }
 
     partial void OnScatterFilterQueryChanged(string value)
@@ -717,355 +869,85 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private void LoadScatterOrRom(string path)
+    private async Task LoadScatterOrRomAsync(string path, CancellationTokenSource loadCts)
     {
         try
         {
-            string ext = Path.GetExtension(path).ToLowerInvariant();
-            string fileName = Path.GetFileName(path);
+            ProgressStatusText = "Parsing firmware metadata...";
+            List<FlashPartitionRow> parsedPartitions = await Task.Run(() =>
+            {
+                loadCts.Token.ThrowIfCancellationRequested();
+                string ext = Path.GetExtension(path).ToLowerInvariant();
+                string fileName = Path.GetFileName(path);
 
+                if (ext is ".txt" or ".xml")
+                {
+                    string content = File.ReadAllText(path);
+                    loadCts.Token.ThrowIfCancellationRequested();
+                    var manifest = MtkScatterManifestParser.Parse(content);
+                    string dir = Path.GetDirectoryName(path) ?? "";
+                    return manifest.Partitions.Select((partition, index) =>
+                    {
+                        string fileNameForPartition = partition.FileName ?? $"{partition.Name}.img";
+                        long lengthBytes = checked((long)partition.Length);
+                        return new FlashPartitionRow
+                        {
+                            Index = index,
+                            Name = partition.Name,
+                            LengthBytes = lengthBytes,
+                            LengthFormatted = FormatBytes(lengthBytes),
+                            Type = partition.Storage.ToString().ToUpperInvariant(),
+                            FileName = fileNameForPartition,
+                            FilePath = Path.Combine(dir, fileNameForPartition),
+                            IsSelected = partition.Download
+                        };
+                    }).ToList();
+                }
+
+                if (ext is ".ofp" or ".ops" or ".pac" or ".ozip" ||
+                    fileName.Equals("payload.bin", StringComparison.OrdinalIgnoreCase))
+                {
+                    var entries = FlashEngineService.InspectRomPackageOffline(path);
+                    return entries.Select((entry, index) =>
+                    {
+                        return new FlashPartitionRow
+                        {
+                            Index = index,
+                            Name = entry.Name,
+                            LengthBytes = entry.SizeBytes,
+                            LengthFormatted = entry.SizeFormatted,
+                            Type = entry.Category,
+                            FileName = entry.FileName,
+                            FilePath = path,
+                            IsSelected = !entry.IsLoader
+                        };
+                    }).ToList();
+                }
+
+                throw new NotSupportedException($"Unsupported firmware metadata format: {ext}");
+            }, loadCts.Token);
+
+            loadCts.Token.ThrowIfCancellationRequested();
             _allPartitions.Clear();
-            Partitions.Clear();
-
-            if (ext is ".txt" or ".xml")
-            {
-                string content = File.ReadAllText(path);
-                var manifest = MtkScatterManifestParser.Parse(content);
-                int idx = 0;
-                string dir = Path.GetDirectoryName(path) ?? "";
-
-                foreach (var p in manifest.Partitions)
-                {
-                    string partFn = p.FileName ?? $"{p.Name}.img";
-                    string partFp = Path.Combine(dir, partFn);
-                    long len = (long)p.Length;
-
-                    var row = new FlashPartitionRow
-                    {
-                        Index = idx++,
-                        Name = p.Name,
-                        LengthBytes = len,
-                        LengthFormatted = FormatBytes(len),
-                        Type = p.Storage.ToString().ToUpperInvariant(),
-                        FileName = partFn,
-                        FilePath = partFp,
-                        IsSelected = p.Download
-                    };
-                    _allPartitions.Add(row);
-                }
-
-                ApplyPartitionFilter();
-                AddLog($"✔ Scatter cargado: {fileName} ({_allPartitions.Count} particiones)", "#00E676");
-                ProgressStatusText = "Scatter cargado";
-            }
-            else if (ext is ".ofp" or ".ops" or ".pac" or ".ozip" || fileName.Equals("payload.bin", StringComparison.OrdinalIgnoreCase))
-            {
-                var entries = _engineService.InspectRomPackage(path);
-                int idx = 0;
-                foreach (var e in entries)
-                {
-                    var row = new FlashPartitionRow
-                    {
-                        Index = idx++,
-                        Name = e.Name,
-                        LengthBytes = e.SizeBytes,
-                        LengthFormatted = e.SizeFormatted,
-                        Type = e.Category,
-                        FileName = e.FileName,
-                        FilePath = path,
-                        IsSelected = !e.IsLoader
-                    };
-                    _allPartitions.Add(row);
-                }
-
-                ApplyPartitionFilter();
-                AddLog($"✔ Paquete ROM cargado: {fileName} ({_allPartitions.Count} entradas)", "#00E676");
-                ProgressStatusText = "ROM cargada";
-            }
+            _allPartitions.AddRange(parsedPartitions);
+            ApplyPartitionFilter();
+            AddLog($"Firmware metadata parsed offline: {Path.GetFileName(path)} ({_allPartitions.Count} entries). No device operation was performed.", "#00E5FF");
+            ProgressStatusText = "Metadata loaded";
+        }
+        catch (OperationCanceledException) when (loadCts.IsCancellationRequested)
+        {
         }
         catch (Exception ex)
         {
-            AddLog($"❌ Error al parsear firmware/scatter: {ex.Message}", "#FF1744");
-        }
-    }
-
-    // =========================================================================
-    // NÚCLEO DE ESCUCHA ACTIVA Y ATRAPAMIENTO AUTOMÁTICO DE PUERTOS
-    // Estilo MTKClient / UnlockTool: "Waiting for device..." -> Atrapar puerto
-    // -> Identificar Chipset/Seguridad -> Consultar AssetsManifest.json -> Inyectar Loader -> Ejecutar Operación
-    // =========================================================================
-    private async Task ExecuteServicingOperationAsync(
-        string operationName,
-        Func<TrappedDevicePort, ResolvedLoaderBundle, CancellationToken, Task> executeOperation)
-    {
-        if (IsBusy)
-        {
-            AddLog("⚠️ Hay otra operación en curso. Espera a que finalice o presiona 'STOP / CANCEL'.", "#FFD600");
-            return;
-        }
-
-        IsBusy = true;
-        _currentOperationCts = new CancellationTokenSource();
-        var ct = _currentOperationCts.Token;
-        bool isDemo = SelectedLoader == "Demo / Emulación Offline";
-
-        try
-        {
-            AddLog("----------------------------------------------------------------", "#1B4D28");
-            AddLog($"Operation : {operationName} {(isDemo ? "[MODO SIMULACIÓN]" : "")}", "#00FF66");
-            ProgressValue = 2;
-            ProgressStatusText = "Waiting for device...";
-
-            ConnectionStatusBadge = "LISTENING • Waiting for device...";
-            ConnectionBadgeColor = "#FFD600";
-
-            TrappedDevicePort trappedPort;
-
-            if (isDemo)
-            {
-                AddLog("Waiting for device...", "#FFD600");
-                AddLog("▶ [Escucha Activa] Monitoreando bus USB para atrapar BROM / Preloader / EDL 9008 / UNISOC Diag...", "#E0FFE8");
-                AddLog("💡 [DEMO] Simulando espera y atrapamiento de conexión USB (1.2s)...", "#80FF9E");
-                await Task.Delay(1200, ct);
-
-                trappedPort = new TrappedDevicePort("COM9", "MTK", "MediaTek USB Port (COM9)", 0x0E8D, 0x0003, true);
-                AddLog($"✔ [DEMO] Dispositivo atrapado en bus USB: {trappedPort.Description} ({trappedPort.PortName}) [{trappedPort.Platform}]", "#00FF66");
-            }
-            else
-            {
-                // Escucha activa real mediante DevicePortTrapService
-                trappedPort = await _portTrapService.WaitForDevicePortAsync(
-                    preferredPlatform: SelectedBase,
-                    ct: ct,
-                    logCallback: (msg, color) => AddLog(msg, color));
-            }
-
-            // Actualizar badges e interfaz en caliente
-            ConnectionStatusBadge = $"ONLINE • {trappedPort.Description} ({trappedPort.PortName})";
-            ConnectionBadgeColor = "#00FF66";
-            IsDeviceOnline = true;
-            ProgressValue = 15;
-
-            // =========================================================================
-            // FASE 1: IDENTIFICACIÓN DE CHIPSET Y REVISIÓN DE SEGURIDAD EN CALIENTE
-            // =========================================================================
-            ProgressStatusText = "Identifying Hardware & Security...";
-            ushort hwCode = 0x0707;
-            string socName = "MT6768 Helio G80/G85";
-            bool sbc = true, sla = true, daa = true;
-            string? msmId = null;
-
-            if (trappedPort.Platform == "MTK")
-            {
-                if (!isDemo && OperatingSystem.IsWindows() && trappedPort.PortName.StartsWith("COM", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        using var port = FlashEngineService.OpenSerialPort(trappedPort.PortName);
-                        FlashEngineService.PerformMtkHandshake(port, ct);
-                        hwCode = FlashEngineService.ReadMtkHwCode(port);
-                        var (sub, hwVer, swVer) = FlashEngineService.ReadMtkVers(port);
-                        uint targetCfg = FlashEngineService.ReadMtkTargetConfig(port);
-                        FlashEngineService.DisableMtkWatchdog(port);
-
-                        sbc = (targetCfg & 0x01) != 0;
-                        sla = (targetCfg & 0x02) != 0;
-                        daa = (targetCfg & 0x04) != 0;
-                        socName = FlashEngineService.MapHwCodeToName(hwCode);
-                    }
-                    catch (Exception ex)
-                    {
-                        AddLog($"⚠️ Handshake directo por COM omitido o en espera de DA: {ex.Message}", "#FFD600");
-                    }
-                }
-
-                DetectedChipsetBanner = $"Chipset ID : {socName} (0x{hwCode:X4})";
-                AddLog($"USB Port : {trappedPort.PortName} ({trappedPort.Description})", "#00E5FF");
-                AddLog($"Chipset ID : {socName} (0x{hwCode:X4})", "#00FF66");
-                AddLog($"- Active Sec Flag : SBC={(sbc ? "1" : "0")}, SLA={(sla ? "1" : "0")}, DAA={(daa ? "1" : "0")}", "#FF1744");
-            }
-            else if (trappedPort.Platform == "QCOM")
-            {
-                msmId = "SM6125 / Snapdragon 665";
-                DetectedChipsetBanner = $"Qualcomm Snapdragon EDL 9008 [{trappedPort.PortName}]";
-                AddLog($"USB Port : {trappedPort.PortName} ({trappedPort.Description})", "#00E5FF");
-                AddLog($"Chipset ID : Qualcomm HS-USB QDLoader 9008 (PBL Sahara Active)", "#00FF66");
-                AddLog("- Active Sec Flag : SECURE_BOOT=1, OEM_PK_HASH_ENFORCED", "#FF1744");
-            }
-            else // SPRD
-            {
-                DetectedChipsetBanner = $"UNISOC Tiger SoC [{trappedPort.PortName}]";
-                AddLog($"USB Port : {trappedPort.PortName} ({trappedPort.Description})", "#00E5FF");
-                AddLog($"Chipset ID : UNISOC BootROM / Diag (SciCrc / BSL Sync)", "#00FF66");
-                AddLog("- Active Sec Flag : EFUSE_SECURE=1", "#FF1744");
-            }
-
-            // =========================================================================
-            // FASE 2: CONSULTA DE ÍNDICE AssetsManifest.json Y AUTOLOADER RESOLVER
-            // =========================================================================
-            ProgressValue = 35;
-            ProgressStatusText = "Consulting AssetsManifest.json & Loaders...";
-
-            var fp = new DeviceHardwareFingerprint(
-                Platform: trappedPort.Platform,
-                MtkHwCode: hwCode,
-                QcomMsmHwId: msmId,
-                SprdSocId: "T606");
-
-            var resolvedBundle = _loaderResolver.ResolveForDevice(fp, CustomDaPath);
-
-            // Búsqueda en caliente en AssetsManifest.json
-            var manifestDa = _manifestService.FindBestDownloadAgent(hwCode, SelectedDeviceModel, SelectedBrand);
-            var manifestPreloader = _manifestService.FindBestPreloader(hwCode, SelectedBrand);
-
-            if (manifestDa != null)
-            {
-                AddLog($"[ASSETS] Manifest Matched DA: {manifestDa.FileName} ({manifestDa.Category}, {manifestDa.Size / 1024} KB)", "#00E5FF");
-            }
-            else if (!string.IsNullOrEmpty(resolvedBundle.MtkDaPath))
-            {
-                AddLog($"[ASSETS] Matched Download Agent: {Path.GetFileName(resolvedBundle.MtkDaPath)}", "#00E5FF");
-            }
-
-            if (manifestPreloader != null)
-            {
-                AddLog($"[ASSETS] Manifest Preloader EMI: {manifestPreloader.FileName} ({manifestPreloader.Size} B)", "#00E5FF");
-            }
-            else if (!string.IsNullOrEmpty(resolvedBundle.MtkPreloaderPath))
-            {
-                AddLog($"[ASSETS] Matched Preloader EMI: {Path.GetFileName(resolvedBundle.MtkPreloaderPath)}", "#00E5FF");
-            }
-
-            // =========================================================================
-            // FASE 3: INYECCIÓN SECUENCIAL DE LOADER / BYPASS / AUTH
-            // =========================================================================
-            ProgressValue = 55;
-            ProgressStatusText = "Injecting Loader & DRAM Init...";
-
-            if (trappedPort.Platform == "MTK")
-            {
-                if (sla || daa)
-                {
-                    AddLog("Checking SLA/DAA Security Protection : Activo", "#ECEFF1");
-                    AddLog("Applying BROM Security Bypass (Penumbra / Kamakiri / Fenrir) : OK", "#00FF66");
-                }
-                AddLog("Sending 1st DA (Bootstrap & Architecture handshake) : OK", "#00FF66");
-                AddLog("Jump to 1st DA : OK", "#00FF66");
-                AddLog("Sending EMI DRAM payload (LPDDR Controller init) : OK", "#00FF66");
-                AddLog("Sending 2nd DA (Storage Engine & GPT access) : OK", "#00FF66");
-                AddLog("Storage Type : eMMC / UFS (High Speed Transfer Protocol) : OK", "#00FF66");
-            }
-            else if (trappedPort.Platform == "QCOM")
-            {
-                AddLog("Sahara PBL Handshake : Hello (0x01) -> ACK", "#00FF66");
-                AddLog("Transferring Firehose Programmer (.elf/.mbn) : OK", "#00FF66");
-                AddLog("Switching to Firehose Streaming Protocol (0x04 Done) : OK", "#00FF66");
-                AddLog("Firehose XML Channel Initialized : OK", "#00FF66");
-            }
-            else // SPRD
-            {
-                AddLog("UNISOC BSL Handshake (0x7E) : OK", "#00FF66");
-                AddLog("Downloading FDL1 to 0x65000800 : OK", "#00FF66");
-                AddLog("Jump to FDL1 (DRAM init) : OK", "#00FF66");
-                AddLog("Downloading FDL2 to 0x9EFFFE00 : OK", "#00FF66");
-                AddLog("Jump to FDL2 (Storage Command Protocol) : OK", "#00FF66");
-            }
-
-            // =========================================================================
-            // FASE 4: EJECUCIÓN DE LA OPERACIÓN SELECCIONADA POR EL USUARIO
-            // =========================================================================
-            ProgressValue = 75;
-            ProgressStatusText = $"Executing {operationName}...";
-            AddLog($"▶ Ejecutando acción: {operationName}...", "#00E5FF");
-
-            await executeOperation(trappedPort, resolvedBundle, ct);
-
-            ProgressValue = 100;
-            ProgressStatusText = $"{operationName} Completado con Éxito";
-            AddLog($"✔ [{operationName}] Operación finalizada exitosamente.", "#00FF66");
-            AddLog("----------------------------------------------------------------", "#1B4D28");
-        }
-        catch (OperationCanceledException)
-        {
-            AddLog("🛑 Operación cancelada por el usuario.", "#FFD600");
-            ProgressStatusText = "Cancelado";
-            ProgressValue = 0;
-            ConnectionStatusBadge = "STANDBY • Operación Cancelada";
-            ConnectionBadgeColor = "#264D31";
-        }
-        catch (Exception ex)
-        {
-            AddLog($"❌ Error durante {operationName}: {ex.Message}", "#FF3344");
-            ProgressStatusText = "Error en la operación";
-            ProgressValue = 0;
-            ConnectionStatusBadge = "ERROR • Falló la operación";
-            ConnectionBadgeColor = "#FF3344";
+            AddLog($"Error al parsear firmware/scatter: {ex.Message}", "#FF3344");
+            ProgressStatusText = "Metadata parsing failed";
         }
         finally
         {
-            IsBusy = false;
+            if (ReferenceEquals(_scatterLoadCts, loadCts))
+                _scatterLoadCts = null;
+            loadCts.Dispose();
         }
-    }
-
-    // =========================================================================
-    // SERVICIO: READ INFO / CONNECT
-    // =========================================================================
-    [RelayCommand]
-    public async Task ReadInfoAsync()
-    {
-        await ExecuteServicingOperationAsync("Read Info & GPT", async (port, bundle, ct) =>
-        {
-            LoadSimulatedOrReadPartitions();
-            AddLog("Reading Partition Table (GPT) : OK", "#00FF66");
-            AddLog($"Particiones encontradas: {_allPartitions.Count}", "#00E5FF");
-            await Task.Delay(200, ct);
-        });
-    }
-
-    private void LoadSimulatedOrReadPartitions()
-    {
-        _allPartitions.Clear();
-        Partitions.Clear();
-        var defaultParts = new (string name, long len, string type)[]
-        {
-            ("boot", 67108864, "BOOT"),
-            ("vbmeta", 8388608, "VBMETA"),
-            ("recovery", 67108864, "RECOVERY"),
-            ("dtbo", 8388608, "DTBO"),
-            ("super", 4294967296, "SPARSE/EXT4"),
-            ("userdata", 17179869184, "F2FS/EXT4"),
-            ("misc", 4194304, "RAW"),
-            ("frp", 1048576, "RAW"),
-            ("nvram", 5242880, "SEC_RF"),
-            ("nvdata", 67108864, "SEC_RF"),
-            ("proinfo", 3145728, "SEC_RF"),
-            ("md1img", 67108864, "MODEM"),
-            ("spmfw", 1048576, "FIRMWARE"),
-            ("sspm", 1048576, "FIRMWARE"),
-            ("tee1", 5242880, "TRUSTZONE"),
-            ("tee2", 5242880, "TRUSTZONE"),
-            ("lk", 2097152, "BOOTLOADER"),
-            ("lk2", 2097152, "BOOTLOADER"),
-            ("seccfg", 8388608, "SECURITY")
-        };
-
-        int idx = 0;
-        foreach (var (name, len, type) in defaultParts)
-        {
-            var row = new FlashPartitionRow
-            {
-                Index = idx++,
-                Name = name,
-                LengthBytes = len,
-                LengthFormatted = FormatBytes(len),
-                Type = type,
-                FileName = $"{name}.img",
-                FilePath = $"{name}.img",
-                IsSelected = true
-            };
-            _allPartitions.Add(row);
-        }
-        ApplyPartitionFilter();
     }
 
     private static string FormatBytes(long bytes)
@@ -1081,84 +963,126 @@ public partial class MainViewModel : ViewModelBase
         return $"{number:n1} {suffixes[counter]}";
     }
 
+    private async Task ExecuteServicingOperationAsync(string operationName)
+    {
+        if (IsBusy)
+        {
+            AddLog("⚠️ Hay otra operación en curso. Espera a que finalice o presiona 'STOP / CANCEL'.", "#FFD600");
+            return;
+        }
+
+        bool isSimulation = SelectedLoader == "Demo / Emulación Offline";
+        string platform = SelectedBase switch
+        {
+            "Mediatek" => "MTK",
+            "Qualcomm" => "QCOM",
+            "Unisoc" => "SPRD",
+            "ADB" => "ADB",
+            "Fastboot" => "FASTBOOT",
+            _ => SelectedBase.ToUpperInvariant()
+        };
+
+        var request = new OperationRequest(
+            OperationName: operationName,
+            Platform: platform,
+            PortName: SelectedPort,
+            ModelName: SelectedDeviceModel,
+            Brand: SelectedBrand != "Todas" ? SelectedBrand : null,
+            Chipset: null,
+            IsSimulation: isSimulation);
+
+        IsBusy = true;
+        _currentOperationCts = new CancellationTokenSource();
+
+        try
+        {
+            var result = await Task.Run(() => _engine.ExecuteOperationAsync(request, _currentOperationCts.Token));
+            if (!result.Success && result.SupportLevel == OperationSupportLevel.Unavailable)
+            {
+                ProgressStatusText = "Operation unavailable";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            AddLog("🛑 Operación cancelada por el usuario.", "#FFD600");
+            ProgressStatusText = "Cancelado";
+            ProgressValue = 0;
+        }
+        catch (Exception ex)
+        {
+            AddLog($"❌ Error durante {operationName}: {ex.Message}", "#FF3344");
+            ProgressStatusText = "Error en la operación";
+            ProgressValue = 0;
+        }
+        finally
+        {
+            IsBusy = false;
+            _currentOperationCts?.Dispose();
+            _currentOperationCts = null;
+        }
+    }
+
+    // =========================================================================
+    // SERVICIO: READ INFO / CONNECT / BOOT
+    // =========================================================================
+    [RelayCommand]
+    public async Task ReadInfoAsync()
+    {
+        await ExecuteServicingOperationAsync("ReadInfo");
+    }
+
+    [RelayCommand]
+    public async Task ConnectAndReadInfoAsync()
+    {
+        await ExecuteServicingOperationAsync("ReadInfo");
+    }
+
+    [RelayCommand]
+    public async Task BootDeviceAsync()
+    {
+        await ExecuteServicingOperationAsync("ReadInfo");
+    }
+
+    [RelayCommand]
+    public async Task RebootDeviceAsync()
+    {
+        await ExecuteServicingOperationAsync("RebootDevice");
+    }
+
     // =========================================================================
     // SERVICIO: REMOVE FRP
     // =========================================================================
     [RelayCommand]
     public async Task RemoveFrpAsync()
     {
-        await ExecuteServicingOperationAsync("Remove FRP (Google Account Lock)", async (port, bundle, ct) =>
-        {
-            AddLog("Target Partition : frp (0x100000 bytes) / config", "#00E5FF");
-            await Task.Delay(300, ct);
-            AddLog("Erasing FRP persistent blocks : OK", "#00FF66");
-            AddLog("Writing blank protective header : OK", "#00FF66");
-            AddLog("✔ Bloqueo FRP removido exitosamente. El dispositivo iniciará sin cuenta.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync("ResetFrp");
     }
 
     // =========================================================================
-    // SERVICIO: FACTORY RESET (Format MISC, Wipe Userdata)
+    // SERVICIO: FACTORY RESET
     // =========================================================================
     [RelayCommand]
     public async Task StartFactoryResetTaskAsync()
     {
-        await ExecuteServicingOperationAsync($"Factory Reset [{SelectedFactoryResetTask}]", async (port, bundle, ct) =>
-        {
-            await Task.Delay(300, ct);
-            if (SelectedFactoryResetTask.Contains("MISC"))
-            {
-                AddLog("Writing recovery wipe-data flag to 'misc' partition : OK", "#00FF66");
-            }
-            else
-            {
-                AddLog("Formatting 'userdata' and 'metadata' filesystem blocks : OK", "#00FF66");
-            }
-            AddLog($"✔ Factory Reset [{SelectedFactoryResetTask}] completado con éxito.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync($"FactoryReset:{SelectedFactoryResetTask}");
     }
 
     // =========================================================================
-    // SERVICIO: SECURITY / EFS (Backup / Restore / Erase)
+    // SERVICIO: SECURITY / EFS
     // =========================================================================
     [RelayCommand]
     public async Task StartSecurityTaskAsync()
     {
-        await ExecuteServicingOperationAsync($"Security/EFS [{SelectedSecurityTask}]", async (port, bundle, ct) =>
-        {
-            AddLog("Accessing Partitions: nvram, nvdata, protect1, protect2, proinfo...", "#00E5FF");
-            await Task.Delay(300, ct);
-
-            if (SelectedSecurityTask == "Backup")
-            {
-                string backupDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Backups");
-                Directory.CreateDirectory(backupDir);
-                string file = Path.Combine(backupDir, $"EFS_Backup_{DateTime.Now:yyyyMMdd_HHmmss}.bin");
-                await File.WriteAllBytesAsync(file, new byte[1024 * 64], ct);
-                AddLog($"✔ Copia de seguridad guardada en: {file}", "#00FF66");
-            }
-            else
-            {
-                AddLog($"✔ Operación de seguridad {SelectedSecurityTask} completada.", "#00FF66");
-            }
-        });
+        await ExecuteServicingOperationAsync($"Security:{SelectedSecurityTask}");
     }
 
     // =========================================================================
-    // SERVICIO: META TASKS (Tecno/Infinix FRP, Meta Reset)
+    // SERVICIO: META TASKS
     // =========================================================================
     [RelayCommand]
     public async Task StartMetaTaskAsync()
     {
-        await ExecuteServicingOperationAsync($"Meta Task [{SelectedMetaTask}]", async (port, bundle, ct) =>
-        {
-            AddLog("Rebooting device to META Mode (AP/MD handshake)...", "#00E5FF");
-            await Task.Delay(400, ct);
-            AddLog("Connected to META Mode Kernel : OK", "#00FF66");
-            AddLog($"Executing {SelectedMetaTask} in META context...", "#ECEFF1");
-            await Task.Delay(300, ct);
-            AddLog("✔ Tarea META completada exitosamente.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync($"Meta:{SelectedMetaTask}");
     }
 
     // =========================================================================
@@ -1167,173 +1091,78 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public async Task StartMt62xxTaskAsync()
     {
-        await ExecuteServicingOperationAsync($"MT62xx [{SelectedMt62xxTask}]", async (port, bundle, ct) =>
-        {
-            AddLog("Detecting NOR/NAND Flash Geometry : OK", "#00FF66");
-            AddLog($"Executing {SelectedMt62xxTask}...", "#ECEFF1");
-            await Task.Delay(300, ct);
-            AddLog("✔ Operación MT62xx finalizada.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync($"Mt62xx:{SelectedMt62xxTask}");
     }
 
     // =========================================================================
-    // SERVICIO: UNLOCK / LOCK BOOTLOADER
+    // SERVICIO: UNLOCK BOOTLOADER
     // =========================================================================
     [RelayCommand]
     public async Task UnlockBootloaderAsync()
     {
-        await ExecuteServicingOperationAsync("Unlock Bootloader (seccfg patch / Orange State)", async (port, bundle, ct) =>
-        {
-            AddLog("Reading 'seccfg' partition...", "#00E5FF");
-            await Task.Delay(250, ct);
-            AddLog("Applying Unlock Magic: 0x47535542 ('BUSG') + Unlock Flag : OK", "#00FF66");
-            AddLog("Flashing patched seccfg : OK", "#00FF66");
-            AddLog("✔ Bootloader desbloqueado permanentemente (Estado Orange).", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync("UnlockBootloader");
     }
 
     // =========================================================================
-    // SERVICIO: READ HARDWARE KEYS (JSON)
+    // SERVICIO: READ HARDWARE KEYS
     // =========================================================================
     [RelayCommand]
     public async Task ReadHardwareKeysAsync()
     {
-        await ExecuteServicingOperationAsync("Read Hardware Keys (JSON Dump)", async (port, bundle, ct) =>
-        {
-            await Task.Delay(300, ct);
-            var keys = new
-            {
-                meid = "0xDC8E9AB41B672449A5B6A58C14D94295",
-                soc_id = "0x00000000000000000000000000000000",
-                hw_code = "0x0707",
-                hw_subcode = "0x8A00",
-                hw_version = "0xCA00",
-                sw_version = "0x0000",
-                sbc_enabled = true,
-                sla_enabled = true,
-                daa_enabled = true
-            };
-
-            string json = JsonSerializer.Serialize(keys, new JsonSerializerOptions { WriteIndented = true });
-            string outDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Keys");
-            Directory.CreateDirectory(outDir);
-            string outPath = Path.Combine(outDir, $"hwkeys_{DateTime.Now:yyyyMMdd_HHmmss}.json");
-            await File.WriteAllTextAsync(outPath, json, ct);
-
-            AddLog($"Keys extraídas con éxito y guardadas en:\n{outPath}", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync("ReadHardwareKeys");
     }
 
     // =========================================================================
-    // SERVICIO: REMOVE MI ACCOUNT / DISABLE OTA / REMOVE HUAWEI ID
+    // SERVICIO: OEM SERVICING (MI ACCOUNT, OTA, HUAWEI ID)
     // =========================================================================
     [RelayCommand]
     public async Task RemoveMiAccountAsync()
     {
-        await ExecuteServicingOperationAsync("Remove Mi Account", async (port, bundle, ct) =>
-        {
-            await Task.Delay(300, ct);
-            AddLog("Formatting 'persdata' & 'frp' partitions : OK", "#00FF66");
-            AddLog("Patching 'cust' persistent flag : OK", "#00FF66");
-            AddLog("✔ Cuenta Mi removida exitosamente.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync("RemoveMiAccount");
     }
 
     [RelayCommand]
     public async Task DisableOtaAsync()
     {
-        await ExecuteServicingOperationAsync("Disable OTA System Updates", async (port, bundle, ct) =>
-        {
-            await Task.Delay(300, ct);
-            AddLog("Disabling update services in recovery/system : OK", "#00FF66");
-            AddLog("✔ Actualizaciones automáticas OTA desactivadas.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync("DisableOta");
     }
 
     [RelayCommand]
     public async Task RemoveHuaweiIdAsync()
     {
-        await ExecuteServicingOperationAsync("Remove Huawei ID", async (port, bundle, ct) =>
-        {
-            await Task.Delay(300, ct);
-            AddLog("Resetting Huawei ID token in 'oeminfo' : OK", "#00FF66");
-            AddLog("✔ Huawei ID removido con éxito.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync("RemoveHuaweiId");
     }
 
-    // =========================================================================
-    // SERVICIO: DISPARADOR DE SCRIPTS PYTHON (Bypass Utility, mtkclient, etc.)
-    // =========================================================================
     [RelayCommand]
     public async Task RunPythonBypassAsync()
     {
-        await ExecuteServicingOperationAsync("Python Kamakiri Bypass", async (port, bundle, ct) =>
-        {
-            AddLog("▶ [Python] Iniciando Bypass Utility (SLA/DAA Kamakiri)...", "#FFD600");
-            int code = await _pythonRunner.RunBypassUtilityAsync(port.PortName, msg => AddLog(msg, "#ECEFF1"), ct);
-            if (code == 0)
-                AddLog("✔ [Python] Protección BROM deshabilitada con éxito. Ya puedes continuar con el flasheo.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync("PythonBypass");
     }
 
     // =========================================================================
-    // TOOLS: RPMB & OEMINFO
+    // SERVICIO: RPMB & OEMINFO & LK
     // =========================================================================
     [RelayCommand]
     public async Task StartRpmbTaskAsync()
     {
-        await ExecuteServicingOperationAsync($"RPMB [{SelectedRpmbTask}]", async (port, bundle, ct) =>
-        {
-            await Task.Delay(300, ct);
-            AddLog($"RPMB eMMC/UFS Replay Protected Memory Block ({SelectedRpmbTask}) : OK", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync($"Rpmb:{SelectedRpmbTask}");
     }
 
     [RelayCommand]
     public async Task StartOemInfoTaskAsync()
     {
-        await ExecuteServicingOperationAsync($"OEMINFO [{SelectedOemInfoTask}]", async (port, bundle, ct) =>
-        {
-            await Task.Delay(300, ct);
-            AddLog($"OEMINFO Operator / Region Flags ({SelectedOemInfoTask}) : OK", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync($"OemInfo:{SelectedOemInfoTask}");
     }
 
     [RelayCommand]
     public async Task StartLkTaskAsync()
     {
-        await ExecuteServicingOperationAsync($"LittleKernel LK [{SelectedLkTask}]", async (port, bundle, ct) =>
-        {
-            await Task.Delay(300, ct);
-            AddLog("Patching LittleKernel verification policies : OK", "#00FF66");
-            AddLog("✔ LK parcheado correctamente para eludir firma de arranque.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync($"LkPatch:{SelectedLkTask}");
     }
 
     // =========================================================================
-    // FLASH (TAB 2): CONNECT / READ INFO, REBOOT, READ, WRITE, ERASE
+    // SERVICIO: FLASH / PARTITION OPERATIONS (READ / WRITE / ERASE)
     // =========================================================================
-    [RelayCommand]
-    public async Task ConnectAndReadInfoAsync()
-    {
-        await ReadInfoAsync();
-    }
-
-    [RelayCommand]
-    public async Task BootDeviceAsync()
-    {
-        await ReadInfoAsync();
-    }
-
-    [RelayCommand]
-    public async Task RebootDeviceAsync()
-    {
-        AddLog("Operation : Reboot Device (Exit Service Mode & Reboot to Android)", "#FFD600");
-        await Task.Delay(300);
-        AddLog("Sending WDT Reboot Command : OK", "#00FF66");
-        AddLog("✔ Dispositivo reiniciado al sistema Android.", "#00FF66");
-    }
-
     [RelayCommand]
     public async Task ReadFlashAsync()
     {
@@ -1344,18 +1173,7 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        await ExecuteServicingOperationAsync($"Read Dump ({selected.Count} particiones)", async (port, bundle, ct) =>
-        {
-            for (int i = 0; i < selected.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                var p = selected[i];
-                AddLog($"Reading [{p.Name}] ({p.LengthFormatted})...", "#00E5FF");
-                ProgressValue = 75 + (int)(((i + 1) / (float)selected.Count) * 25);
-                await Task.Delay(120, ct);
-            }
-            AddLog("✔ Volcado de particiones completado con éxito.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync($"ReadPartition ({selected.Count} particiones)");
     }
 
     [RelayCommand]
@@ -1368,18 +1186,7 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        await ExecuteServicingOperationAsync($"Flash Firmware ({selected.Count} particiones)", async (port, bundle, ct) =>
-        {
-            for (int i = 0; i < selected.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                var p = selected[i];
-                AddLog($"Writing [{p.Name}] <- {p.FileName}...", "#00E5FF");
-                ProgressValue = 75 + (int)(((i + 1) / (float)selected.Count) * 25);
-                await Task.Delay(120, ct);
-            }
-            AddLog("✔ Flasheo de firmware finalizado exitosamente.", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync($"WritePartition ({selected.Count} particiones)");
     }
 
     [RelayCommand]
@@ -1391,11 +1198,6 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        await ExecuteServicingOperationAsync($"Erase Partition [{SelectedPartition.Name}]", async (port, bundle, ct) =>
-        {
-            AddLog($"Erasing blocks of '{SelectedPartition.Name}' ({SelectedPartition.LengthFormatted})...", "#FF1744");
-            await Task.Delay(300, ct);
-            AddLog($"✔ Partición {SelectedPartition.Name} borrada (zeros).", "#00FF66");
-        });
+        await ExecuteServicingOperationAsync($"ErasePartition:{SelectedPartition.Name}");
     }
 }
