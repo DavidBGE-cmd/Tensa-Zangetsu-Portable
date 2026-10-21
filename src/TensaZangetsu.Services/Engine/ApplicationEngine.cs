@@ -51,6 +51,7 @@ public sealed class ApplicationEngine
         RegisterBackend(new AdbFastboot.AdbBackend());
         RegisterBackend(new AdbFastboot.FastbootBackend());
         RegisterBackend(new Mtk.MtkBackend());
+        RegisterBackend(new Qcom.QcomBackend());
     }
 
     /// <summary>

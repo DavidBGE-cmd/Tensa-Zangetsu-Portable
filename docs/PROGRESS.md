@@ -1,5 +1,38 @@
 # Progreso de implementación
 
+## 2026-10-21 — `TZS-2026-10-21-PHASE-F2`
+
+### Completed
+
+- **Fase F (Paso 2): Adaptador de Protocolo Qualcomm (`QcomBackend`)** completado.
+- Documento de diseño formal: [`docs/plans/2026-10-21-fase-f2-qcom-backend-design.md`](file:///e:/rayitasgg/Documents/Tensa-Zangetsu-Portable/docs/plans/2026-10-21-fase-f2-qcom-backend-design.md).
+- Nuevo backend implementado en `src/TensaZangetsu.Services/Qcom/`:
+  - [`QcomBackend.cs`](file:///e:/rayitasgg/Documents/Tensa-Zangetsu-Portable/src/TensaZangetsu.Services/Qcom/QcomBackend.cs) — Implementa `IBackendProvider` para plataforma `"QCOM"`.
+  - Orquesta `QcomProtocol.ProbeSahara()` sobre `ITransport`.
+  - Soporta operaciones seguras de identificación: `ReadInfo`, `DeviceInfo`, `Connect`, `BootDevice`, `ProbeSahara`.
+  - Mapea de forma estructurada información de silicio: `Serial Number` del SoC (uint64 en hex), `SBL Version`, `MsmId`, `SocHwVersion`, `OemId`, `ModelId` y `Root CA Hash` fingerprint.
+  - Fail-closed estricto: operaciones destructivas (`WriteFlash`, `EraseFlash`, `FormatPartition`, `RawProgram`) y bypasses de seguridad (`ResetFrp`, `RemoveMiAccount`, `UnlockBootloader`) retornan inmediatamente `OperationSupportLevel.Unavailable` con 0 llamadas al transporte y 0 I/O enviada al dispositivo.
+  - Soporta inyección de `QcomTransportFactory` para testing unitario desacoplado sin dependencias de hardware físico.
+  - Resolución dual en producción: puerto COM directo (vía `SerialPortTransportFactory.Create`) y LibUsb (VID 0x05C6, PID 0x9008).
+- `ApplicationEngine.cs` actualizado: registra `QcomBackend` por defecto junto a `SimulationBackend`, `AdbBackend`, `FastbootBackend` y `MtkBackend`.
+- **Tests**: 53/53 pasando en `.tests/TensaZangetsu.Services.Tests` (41 previos + 12 nuevos casos en `QcomBackendTests.cs`):
+  - Operaciones destructivas y bypasses: verificadas como `Unavailable` fail-closed sin abrir transporte.
+  - Dispositivo no detectado en bus: fallo controlado con mensaje instructivo para conectar en modo EDL 9008 (TestPoint, cable EDL o fastboot oem edl).
+  - `ReadInfo` exitoso: handshake Sahara completo simulado en `MockSaharaTransport` (SaharaHello request/response, ReadyResponse, Execute ReadSerialNum, ReadOemPkHash, ReadSblVersion, ReadMsmHwId), extrayendo serial y metadatos MSM.
+  - Cancelación: `OperationCanceledException` durante el handshake devuelve `OperationState.Cancelled` y libera el transporte (`Dispose`).
+  - Corrupción de Hello: paquete corrupto en detección de protocolo falla de forma controlada sin simular éxito.
+  - Dispatch en `ApplicationEngine`: orquestación de `ReadInfo` para plataforma QCOM a través de la máquina de estados verificada.
+- **Build Release solución completa**: 0 errores, 0 advertencias.
+
+### Pending Risks
+
+- `QcomBackend` se marca como `ImplementedUntested` para dispositivos físicos reales; validación con placa física Snapdragon en EDL 9008 pendiente para ascender a `Verified`.
+- Flasheo Firehose (ELF/MBN programmer upload) y rawprogram/patch permanecen para una fase posterior cuando se configure el programador validado.
+
+### Next
+
+- **Fase F (Paso 3)**: Adaptar `SprdProtocolHostAdapter` a `IBackendProvider` (`SprdBackend`) con BSL sync e identificación BROM/FDL.
+
 ## 2026-10-21 — `TZS-2026-10-21-PHASE-F1`
 
 ### Completed
