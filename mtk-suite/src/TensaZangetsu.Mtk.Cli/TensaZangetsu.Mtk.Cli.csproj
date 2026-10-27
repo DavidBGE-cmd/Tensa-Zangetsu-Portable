@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\..\NativeUsbAssets.props" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TensaZangetsu.Mtk.Core\TensaZangetsu.Mtk.Core.csproj" />
+    <ProjectReference Include="..\TensaZangetsu.Mtk.Infrastructure\TensaZangetsu.Mtk.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

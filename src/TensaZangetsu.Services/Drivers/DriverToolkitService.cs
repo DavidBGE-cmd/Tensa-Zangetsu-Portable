@@ -37,8 +37,8 @@ public class DriverToolkitService : IDriverToolkitService
             list.Add(CheckSamsungUsbDriver());
             list.Add(CheckGoogleAdbFastbootDriver());
 
-            // 4. Filtros Avanzados (Opcionales)
-            list.Add(CheckUsbDk());
+            // 4. USB user-mode compatibility is configured with Zadig.
+            // The product does not install or probe UsbDk.
 
             return list;
         });
@@ -251,10 +251,10 @@ public class DriverToolkitService : IDriverToolkitService
             Description = "Controlador certificado para BootROM (0E8D:0003), Preloader (0E8D:2000) y DA (0E8D:2001).",
             IsInstalled = installed,
             VersionOrStatus = ver,
-            DownloadUrl = "https://github.com/daynix/UsbDk/releases/download/v1.00-22/UsbDk_1.0.22_x64.msi", // Fallback seguro
-            FallbackWebUrl = "https://spflashtool.com/drivers/",
-            FileName = "MTK_VCOM_Driver_Installer.exe",
-            Instructions = "Driver oficial firmado compatible con Windows 10 y 11 x64."
+            DownloadUrl = "https://zadig.akeo.ie/",
+            FallbackWebUrl = "https://zadig.akeo.ie/",
+            FileName = "Zadig.exe",
+            Instructions = "Seleccione WinUSB (recomendado) o libusbK para la interfaz MTK exacta. UsbDk no es compatible."
         };
     }
 
@@ -406,38 +406,6 @@ public class DriverToolkitService : IDriverToolkitService
             FallbackWebUrl = "https://developer.android.com/studio/run/win-usb",
             FileName = "usb_driver_r13-windows.zip",
             Instructions = "Driver oficial firmado de Google Android SDK."
-        };
-    }
-
-    private static SystemComponentItem CheckUsbDk()
-    {
-        bool installed = false;
-        string ver = "No detectado";
-
-        try
-        {
-            using var srvKey = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services\UsbDkService");
-            if (srvKey != null)
-            {
-                installed = true;
-                ver = "UsbDk Service Registrado";
-            }
-        }
-        catch { }
-
-        return new SystemComponentItem
-        {
-            Id = "USBDK",
-            Name = "UsbDk (USB Development Kit)",
-            Category = ComponentCategory.AdvancedFilter,
-            Description = "Filtro de kernel avanzado opcional para interceptar dispositivos USB a nivel de controlador host.",
-            IsInstalled = installed,
-            VersionOrStatus = ver,
-            DownloadUrl = "https://github.com/daynix/UsbDk/releases/download/v1.00-22/UsbDk_1.0.22_x64.msi",
-            FallbackWebUrl = "https://github.com/daynix/UsbDk/releases",
-            FileName = "UsbDk_1.0.22_x64.msi",
-            SilentInstallArgs = "/qn /norestart",
-            Instructions = "Instalador MSI de RedHat / Daynix."
         };
     }
 

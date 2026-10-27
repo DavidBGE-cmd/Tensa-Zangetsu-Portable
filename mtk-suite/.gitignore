@@ -1,0 +1,9 @@
+bin/
+obj/
+artifacts/
+Assets/devices/*/loaders/*
+Assets/devices/*/firmware/*
+Assets/devices/*/auth/*
+!Assets/devices/*/loaders/.gitkeep
+!Assets/devices/*/firmware/.gitkeep
+!Assets/devices/*/auth/.gitkeep

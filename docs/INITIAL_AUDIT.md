@@ -75,3 +75,14 @@ Los ejemplos de modelos Qualcomm indicados por el usuario se registrarán única
   - `external/Loaders/Mtk/Preloader-Auth-DA-Files-BFT/Preloader Auth DA/SAMSUNG/SM-A037F/preloader_hs03s.bin`
   - `external/Loaders/Mtk/Preloader-Auth-DA-Files-BFT/Preloader Auth DA/SAMSUNG/SM-A037F/MT676_Android_scatter.txt`
 - Estas rutas adicionales se inventariaron sin alterarlas. Su aparición posterior no prueba compatibilidad ni su procedencia.
+
+## Revalidación del workspace — 2026-10-27
+
+- Entorno actual: Ubuntu 24.04 `linux-x64`; SDK .NET `10.0.401`; no existe `global.json`.
+- La solución mantiene 33 proyectos (`TensaZangetsu.slnx` y `TensaZangetsu.sln`); no se generó ni sustituyó ninguna solución.
+- `dotnet build TensaZangetsu.slnx -c Release`: correcto, 0 advertencias y 0 errores.
+- El estado Git estaba limpio al iniciar la revalidación; los artefactos `bin/` y `obj/` permanecen ignorados.
+- En el workspace actual no existen las raíces `ExternalAssets`, `TESTPOINTS`, `Assets` ni `assets` inspeccionadas por la auditoría anterior. Por tanto, no se repite ni se afirma el inventario histórico de 31.366/31.369 archivos.
+- Los assets localizados en esta revalidación son internos al repositorio: recursos `.bin` de protocolos, dos archivos de autenticación en `src/TensaZangetsu.Services/Assets/Auth/` y `sprig/images/execution.png`. Su presencia no demuestra compatibilidad de hardware.
+- No se encontraron proyectos de pruebas rastreados ni directorios `*Tests*.csproj` visibles fuera de `.git`; las pruebas históricas citadas en este documento no se vuelven a presentar como ejecutadas en este entorno.
+- El siguiente trabajo documentado sigue siendo Fase F, Paso 3: adaptar el protocolo Spreadtrum a `IBackendProvider`. Requiere propuesta de diseño y confirmación antes de modificar varios módulos.

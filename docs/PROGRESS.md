@@ -1,5 +1,59 @@
 # Progreso de implementación
 
+## 2026-10-27 — `TZS-2026-10-27-MTK-SUITE`
+
+### Completed
+
+- Creada la solución independiente `mtk-suite/TensaZangetsu.Mtk.slnx`.
+- Añadidos proyectos separados `Core`, `Infrastructure`, `Cli` y `App`.
+- La CLI y la GUI comparten `MtkDeviceService`, que delega en el `MtkBackend`
+  existente y ejecuta identificación real MTK sin respuestas ficticias.
+- Añadida plantilla de assets por dispositivo en
+  `mtk-suite/Assets/devices/_template/`.
+- Fijado el destino de la suite a Windows x64; la ruta USB usa `LibUsbDotNet`
+  con `libusb-1.0.dll` y drivers Zadig WinUSB/libusbK. UsbDk no se instala,
+  consulta ni distribuye.
+- `dotnet build mtk-suite/TensaZangetsu.Mtk.slnx -c Release --no-restore`:
+  correcto, 0 advertencias y 0 errores.
+
+### Blocked
+
+- La identificación real no puede ejecutarse en este entorno porque falta la
+  biblioteca nativa `libusb-1.0`; no se instala automáticamente.
+- No hay dispositivo MTK conectado ni DA/preloader/EMI/firma OEM proporcionados.
+
+### Next
+
+1. Añadir diagnóstico de dependencias LibUsb y carga del manifiesto de assets.
+2. Probar BROM con transporte simulado y hardware autorizado.
+3. Implementar geometría/particiones y lectura por streaming antes de cualquier
+   operación destructiva.
+
+## 2026-10-27 — `TZS-2026-10-27-REVALIDATION`
+
+### Completed
+
+- Revalidado el workspace sin modificar assets ni protocolos.
+- Confirmado SDK .NET `10.0.401` en Ubuntu 24.04 `linux-x64`.
+- Confirmado que `TensaZangetsu.slnx` contiene 33 proyectos.
+- `dotnet build TensaZangetsu.slnx -c Release`: correcto, 0 advertencias y 0 errores.
+- Confirmado que las raíces externas `ExternalAssets` y `TESTPOINTS` no están presentes en el workspace actual; el inventario histórico no se extrapola.
+
+### InProgress
+
+- Preparación de la propuesta para Fase F, Paso 3 (`SprdBackend`) a partir del protocolo y contratos existentes.
+
+### Blocked
+
+- No hay hardware físico conectado ni evidencia local para marcar operaciones Spreadtrum como `Verified`.
+- No se implementará el adaptador multi-módulo hasta confirmar el diseño y sus límites de seguridad.
+
+### Next
+
+1. Revisar contratos y secuencias BSL/FDL existentes.
+2. Presentar diseño de `SprdBackend`, pruebas de transporte simulado y límites de operaciones.
+3. Implementar sólo después de la confirmación del diseño.
+
 ## 2026-10-21 — `TZS-2026-10-21-PHASE-F2`
 
 ### Completed
@@ -202,4 +256,3 @@
 - **Siguiente fase (Fase E)**: Integración del backend `AdbFastbootBackend` de solo lectura (`adb devices -l`, `fastboot getvar all`) con `ArgumentList` sin shell y timeout acotado.
 - **Fase F**: Adaptar los módulos de protocolo existentes de la CLI (`MtkProtocolHostAdapter`, `QcomProtocolHostAdapter`, `SprdProtocolHostAdapter`) a implementaciones de `IBackendProvider` compartidas en `TensaZangetsu.Services`.
 - **Riesgo**: Sin hardware físico conectado, las operaciones permanecen conservadoramente en `Unavailable` hasta que se conecte un dispositivo real y se confirme el comportamiento del protocolo en el transporte.
-

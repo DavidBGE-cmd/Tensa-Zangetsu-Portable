@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\TensaZangetsu.Mtk.Core\TensaZangetsu.Mtk.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\TensaZangetsu.Services\TensaZangetsu.Services.csproj" />
+  </ItemGroup>
+</Project>

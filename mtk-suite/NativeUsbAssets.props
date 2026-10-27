@@ -1,0 +1,18 @@
+<Project>
+  <PropertyGroup>
+    <!-- Set LIBUSB_ROOT to an extracted official libusb package directory. -->
+    <LibUsbRoot Condition="'$(LibUsbRoot)' == '' and '$(LIBUSB_ROOT)' != ''">$(LIBUSB_ROOT)</LibUsbRoot>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(LibUsbRoot)' != ''">
+    <Content Include="$(LibUsbRoot)\VS2022\MS64\dll\libusb-1.0.dll"
+             Condition="Exists('$(LibUsbRoot)\VS2022\MS64\dll\libusb-1.0.dll')"
+             Link="runtimes\win-x64\native\libusb-1.0.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(LibUsbRoot)\bin\Win64\libusb-1.0.dll"
+             Condition="Exists('$(LibUsbRoot)\bin\Win64\libusb-1.0.dll')"
+             Link="runtimes\win-x64\native\libusb-1.0.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

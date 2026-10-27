@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TensaZangetsu.Mtk.Core/TensaZangetsu.Mtk.Core.csproj" />
+    <Project Path="src/TensaZangetsu.Mtk.Infrastructure/TensaZangetsu.Mtk.Infrastructure.csproj" />
+    <Project Path="src/TensaZangetsu.Mtk.Cli/TensaZangetsu.Mtk.Cli.csproj" />
+    <Project Path="src/TensaZangetsu.Mtk.App/TensaZangetsu.Mtk.App.csproj" />
+  </Folder>
+</Solution>

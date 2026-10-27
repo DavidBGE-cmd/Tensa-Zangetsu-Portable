@@ -30,7 +30,7 @@ public class SystemComponentItem : INotifyPropertyChanged
         ComponentCategory.SystemRuntime => "🛠️ Runtimes del Sistema (Visual C++, .NET, DirectX)",
         ComponentCategory.ChipsetDriver => "⚡ Drivers de Chipset a Bajo Nivel (MTK, Qualcomm, Unisoc)",
         ComponentCategory.OemDriver => "📱 Drivers OEM & ADB (Samsung, Fastboot, Huawei)",
-        ComponentCategory.AdvancedFilter => "🔬 Filtros Avanzados (UsbDk, LibUSB)",
+        ComponentCategory.AdvancedFilter => "🔬 Compatibilidad USB (Zadig / WinUSB / libusbK)",
         _ => "Otros"
     };
 

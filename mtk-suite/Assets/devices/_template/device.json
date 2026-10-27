@@ -1,0 +1,20 @@
+{
+  "id": "replace-with-authorized-device-id",
+  "brand": null,
+  "marketingName": null,
+  "modelCodes": [],
+  "soc": null,
+  "loaders": {
+    "da": "loaders/DA.bin",
+    "preloader": "loaders/preloader.bin",
+    "emi": "loaders/emi.bin"
+  },
+  "firmware": {
+    "scatter": "firmware/scatter.txt"
+  },
+  "authentication": {
+    "certificate": "auth/certificate.bin",
+    "provider": "auth/signature-provider.json"
+  },
+  "verificationStatus": "IndexedUnverified"
+}
