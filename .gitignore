@@ -407,13 +407,8 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-# VS Code files for those working on multiple tools
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-!.vscode/*.code-snippets
+# VS Code
+.vscode/
 
 # Local History for Visual Studio Code
 .history/
@@ -437,8 +432,7 @@ riderModule.iml
 temp/
 /.tests/
 
-# Local development plans
-/docs/plans/
+# Tracked design plans live under docs/plans/.
 
 # Local asset dump and workspace
 mt-katool-FutureAssets.zip
@@ -459,3 +453,9 @@ Tensa-Zangetsu-Portable/
 TESTPOINTS/
 /AssetsManifest.json
 /Catalog/AssetsManifest.json
+
+# External raw dumps, tools and test suites
+MediaTek_DA_Auth/
+UNLOCK/
+Libusb/
+.tests/
