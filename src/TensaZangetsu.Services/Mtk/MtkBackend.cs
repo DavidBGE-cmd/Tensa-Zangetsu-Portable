@@ -2,7 +2,7 @@ using TensaZangetsu.Protocol.Mtk;
 using TensaZangetsu.Protocol.Mtk.Abstractions;
 using TensaZangetsu.Services.Engine;
 using TensaZangetsu.Transport.Abstractions;
-using TensaZangetsu.Transport.LibUsb;
+using System.Text.RegularExpressions;
 
 namespace TensaZangetsu.Services.Mtk;
 
@@ -19,8 +19,10 @@ public delegate Task<IUsbTransport> MtkTransportFactory(OperationRequest request
 /// </summary>
 public sealed class MtkBackend : IBackendProvider
 {
-    private readonly MtkTransportFactory _transportFactory;
-    private readonly MtkProtocolOptions _options;
+    private static readonly Regex ComPortPattern = new(
+        @"(?<![A-Z])COM(?<number>\d+)(?!\d)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private readonly MtkSessionHost _sessionHost;
 
     public string PlatformId => "MTK";
     public string DisplayName => "MediaTek (MTK BROM/Preloader)";
@@ -28,14 +30,7 @@ public sealed class MtkBackend : IBackendProvider
 
     public MtkBackend(MtkTransportFactory? transportFactory = null, MtkProtocolOptions? options = null)
     {
-        _transportFactory = transportFactory ?? DefaultTransportFactoryAsync;
-        _options = options ?? new MtkProtocolOptions
-        {
-            ReadTimeoutMilliseconds = 5000,
-            ConnectTimeoutMilliseconds = 15000,
-            OperationTimeoutMilliseconds = 30000,
-            InitializeWatchdogOnProbe = true
-        };
+        _sessionHost = new MtkSessionHost(transportFactory, options);
     }
 
     public bool SupportsOperation(string operationName)
@@ -79,24 +74,21 @@ public sealed class MtkBackend : IBackendProvider
         IOperationProgressReporter reporter,
         CancellationToken ct)
     {
-        reporter.ReportProgress(10, "Detecting MediaTek USB device (VID 0x0E8D)...");
-        reporter.ReportLog("[MTK] Searching for MediaTek USB device in BROM / Preloader mode...", "INFO");
+        reporter.ReportProgress(10, "Detecting MediaTek BROM / Preloader candidate...");
+        reporter.ReportLog("[MTK] Searching for MediaTek USB or VCOM device in BROM / Preloader mode...", "INFO");
 
-        IUsbTransport? transport = null;
         try
         {
-            transport = await _transportFactory(request, ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-
             reporter.ReportProgress(30, "Connecting and starting BROM handshake...");
-            reporter.ReportLog("[MTK] USB transport acquired. Starting BROM handshake sequence (A0 0A 50 05)...", "INFO");
+            Match comMatch = ComPortPattern.Match(request.PortName ?? string.Empty);
+            if (comMatch.Success)
+                return await ExecuteSerialProbeAsync(
+                    reporter,
+                    ct,
+                    $"COM{comMatch.Groups["number"].Value}").ConfigureAwait(false);
 
-            // Execute synchronous wire handshake and identification on background thread
-            var target = await Task.Run(() =>
-            {
-                var protocol = new MtkProtocol(transport, _options, leaveTransportOpen: false);
-                return protocol.Probe(ct);
-            }, ct).ConfigureAwait(false);
+            reporter.ReportLog("[MTK] Starting USB BROM handshake sequence (A0 0A 50 05)...", "INFO");
+            MtkTargetInfo target = await _sessionHost.ProbeAsync(request, ct).ConfigureAwait(false);
 
             ct.ThrowIfCancellationRequested();
 
@@ -133,8 +125,11 @@ public sealed class MtkBackend : IBackendProvider
             };
 
             reporter.ReportProgress(100, $"Identified {chipName} in {stage}");
-            return OperationResult.MakeSuccess(
+            return new OperationResult(
+                true,
                 $"MediaTek device identified: {chipName} (0x{hwCode:X4}) in {stage} mode.",
+                OperationState.Completed,
+                OperationSupportLevel.ImplementedUntested,
                 data);
         }
         catch (OperationCanceledException)
@@ -157,53 +152,36 @@ public sealed class MtkBackend : IBackendProvider
             reporter.ReportProgress(0, "Failed");
             return OperationResult.MakeFailed(errorMsg, ex, OperationState.Failed);
         }
-        finally
-        {
-            if (transport is not null)
-            {
-                try
-                {
-                    transport.Dispose();
-                }
-                catch { }
-            }
-        }
     }
 
-    private static Task<IUsbTransport> DefaultTransportFactoryAsync(OperationRequest request, CancellationToken ct)
+    private static async Task<OperationResult> ExecuteSerialProbeAsync(
+        IOperationProgressReporter reporter,
+        CancellationToken ct,
+        string portName)
     {
+        reporter.ReportLog($"[MTK] Using MediaTek VCOM transport {portName}.", "INFO", "#00E5FF");
+        ushort hardwareCode = await Task.Run(
+            () => MtkVcomProbe.Connect(portName, ct),
+            ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
 
-        try
-        {
-            var identities = LibUsbTransportFactory.Enumerate(vendorId: 0x0E8D);
-            if (identities.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    "No MediaTek USB device detected (VID 0x0E8D). Connect device in BROM mode (hold Vol+ and Vol- while plugging in USB cable).");
-            }
+        string chipName = MtkChipCatalog.Find(hardwareCode)?.Name ?? $"MT{hardwareCode:X4}";
+        reporter.ReportLog($"[MTK] VCOM BROM identified hardware code 0x{hardwareCode:X4}.", "INFO");
+        reporter.ReportProgress(100, $"Identified {chipName} through {portName}");
 
-            if (identities.Count > 1)
+        return new OperationResult(
+            true,
+            $"MediaTek device identified: {chipName} (0x{hardwareCode:X4}) through {portName}.",
+            OperationState.Completed,
+            OperationSupportLevel.ImplementedUntested,
+            new Dictionary<string, object?>
             {
-                throw new InvalidOperationException(
-                    $"Multiple MediaTek USB devices detected ({identities.Count}). Connect only one device to prevent ambiguous operations.");
-            }
-
-            var identity = identities[0];
-            var options = new LibUsbConnectionOptions
-            {
-                Identity = identity,
-                ReadTimeoutMilliseconds = 5000,
-                WriteTimeoutMilliseconds = 5000,
-                RecoverInitialReadStall = true
-            };
-
-            return Task.FromResult(LibUsbTransportFactory.Create(options));
-        }
-        catch (Exception ex) when (ex is not InvalidOperationException)
-        {
-            throw new InvalidOperationException(
-                $"Failed to access USB subsystem via LibUsb: {ex.Message}. Verify that WinUSB / libusbK drivers are installed.", ex);
-        }
+                ["Platform"] = "MTK",
+                ["Transport"] = "SerialPort",
+                ["PortName"] = portName,
+                ["HardwareCode"] = $"0x{hardwareCode:X4}",
+                ["BootStage"] = "BROM/VCOM",
+                ["SecurityStatus"] = "Not queried by legacy VCOM probe"
+            });
     }
 }

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tensa-zangetsu.local/schemas/mtk-assets.schema.json",
+  "title": "MTK asset inventory manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAtUtc", "models", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedAtUtc": { "type": "string", "minLength": 1 },
+    "sourceRoot": { "type": "string" },
+    "diagnostics": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "models": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/model" }
+    }
+  },
+  "$defs": {
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "displayName", "verificationStatus", "assets"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "displayName": { "type": "string", "minLength": 1 },
+        "verificationStatus": {
+          "enum": ["ReferenceOnly", "IndexedUnverified", "ImplementedUntested", "Verified", "Unavailable"]
+        },
+        "assets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/asset" }
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "kind",
+        "sourceRelativePath",
+        "importedRelativePath",
+        "length",
+        "sha256",
+        "verificationStatus"
+      ],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": ["da", "preloader", "emi", "scatter", "auth", "binary", "metadata", "unknown"]
+        },
+        "sourceRelativePath": { "type": "string", "minLength": 1 },
+        "importedRelativePath": { "type": "string", "minLength": 1 },
+        "length": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9A-Fa-f]{64}$" },
+        "hardwareCodes": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 65535 }
+        },
+        "hardwareSubCodes": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 65535 }
+        },
+        "daKind": { "enum": ["Legacy", "XFlash", "Xml"] },
+        "verificationStatus": {
+          "enum": ["ReferenceOnly", "IndexedUnverified", "ImplementedUntested", "Verified", "Unavailable"]
+        }
+      }
+    }
+  }
+}

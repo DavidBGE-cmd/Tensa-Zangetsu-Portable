@@ -1,5 +1,78 @@
 # Progreso de implementación
 
+## 2026-10-30 — `TZS-2026-10-30-ZANGETSU-CONSOLIDATION`
+
+### Completed
+
+- Confirmado que `zangetsu` es el repositorio Git publicable, con remoto
+  `DavidBGE-cmd/Tensa-Zangetsu-Portable`, historial y estado limpio antes de
+  iniciar la consolidación.
+- Registrado el diseño de consolidación Windows/MTK en
+  `docs/plans/2026-10-30-zangetsu-windows-mtk-consolidation.md`.
+- Añadido `MtkSessionHost` para aislar la sesión USB nativa, resolver una
+  identidad MTK única y liberar el transporte después del Probe.
+- Añadido `MtkVcomProbe` para el handshake BROM limitado sobre un `COMn`
+  explícitamente seleccionado; sólo devuelve HW_CODE y no carga DA ni escribe.
+- `MtkBackend` selecciona VCOM para candidatos COM y mantiene LibUsb para USB
+  nativo. Los resultados físicos se marcan `ImplementedUntested`, no `Verified`.
+- El escaneo LibUsb nativo queda deshabilitado por defecto en Windows mediante
+  `TENSAZANGETSU_ENABLE_NATIVE_USB_SCAN=1`, evitando cargar DLLs no verificadas
+  durante el arranque.
+- Actualizada la documentación de la suite MTK para separar VCOM de USB nativo.
+- Añadidos `Catalog/mtk-assets.schema.json` y
+  `scripts/validate-mtk-assets.ps1` para validar manifiestos importados,
+  rutas contenidas, longitudes y SHA-256 sin ejecutar binarios.
+- Añadidos `MtkCatalogResourceProvider` y
+  `MtkCatalogConnectionResources`: sólo resuelven entradas `Verified` con
+  coincidencia explícita de HW_CODE/SUBCODE, verifican tamaño y SHA-256, y
+  construyen `MtkConnectionResources` sin generar firmas.
+- Añadido `MtkReadPlan` para preparar lecturas alineadas y ligadas a la
+  generación de una sesión `StorageReady`; una reconexión invalida el plan.
+
+### Validation
+
+- `dotnet restore TensaZangetsu.slnx`: correcto.
+- `dotnet restore mtk-suite/TensaZangetsu.Mtk.slnx`: correcto tras repetirlo de
+  forma serializada; una restauración paralela inicial chocó con el archivo de
+  assets de NuGet.
+- `dotnet build TensaZangetsu.slnx -c Release --no-restore`: 0 errores, 0
+  advertencias.
+- `dotnet build mtk-suite/TensaZangetsu.Mtk.slnx -c Release --no-restore`: 0
+  errores, 0 advertencias.
+- Sintaxis PowerShell del validador de assets: correcta.
+- `git diff --check`: correcto.
+
+### Pending
+
+- Añadir tests offline para `MtkVcomProbe`, selección ambigua, cancelación y
+  liberación de recursos.
+- Ejecutar la conexión DA y la lectura GPT/particiones sólo con un catálogo
+  `Verified` y hardware autorizado; el resolver no marca recursos
+  `IndexedUnverified` como compatibles.
+- Implementar posteriormente lectura/DA/autenticación legítima/escritura sólo
+  con planes, estados, autorización y validación de hardware.
+- No existe todavía evidencia física; MTK permanece `ImplementedUntested`.
+
+## 2026-10-30 — `TZS-2026-10-30-UNLOCK-METADATA`
+
+### Completed
+
+- Analizada la carpeta externa `UNLOCK`: contiene perfiles por modelo, pero
+  también binarios, DLL/EXE, loaders cifrados y scripts de operaciones
+  sensibles.
+- Añadidos `unlock-models.schema.json`,
+  `import-unlock-model-catalog.ps1` y `MtkUnlockModelCatalog` para indexar
+  sólo perfiles `model.json`, hashes y metadatos de selección.
+- El importador no copia ni ejecuta binarios y marca todo como
+  `IndexedUnverified`.
+
+### Pending
+
+- Revisar cada modelo con HW_CODE, etapa BROM/Preloader, seguridad, hash de DA/
+  EMI/Auth y evidencia de hardware antes de elevarlo a `Verified`.
+- Conectar los perfiles verificados al resolver MTK sin activar bypass,
+  FRP, scripts de cuentas o escritura destructiva.
+
 ## 2026-10-27 — `TZS-2026-10-27-MTK-SUITE`
 
 ### Completed

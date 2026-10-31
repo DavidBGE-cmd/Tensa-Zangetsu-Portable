@@ -18,3 +18,33 @@ security constraints, and keep unresolved files under `inventory/`.
 
 The source files are never executed or modified. Use `-Rebuild` only when
 intentionally replacing previously imported copies.
+
+Validate the imported files before selecting any resource:
+
+```powershell
+.\scripts\validate-mtk-assets.ps1
+```
+
+The validator checks manifest schema version, contained paths, file lengths and
+SHA-256 values. It does not infer device compatibility and does not execute
+loaders, preloaders, Auth or firmware files.
+
+To make a resource selectable by the connection host, set its manifest entry
+to `verificationStatus: "Verified"` and add explicit `hardwareCodes` and, when
+needed, `hardwareSubCodes` plus `daKind`. Entries without those fields remain
+inventory-only and are rejected by the runtime resolver.
+
+## Importing external model metadata
+
+The optional `UNLOCK` data tree can be indexed without copying or executing
+its binaries:
+
+```powershell
+.\scripts\import-unlock-model-catalog.ps1 `
+  -Source 'C:\path\to\Tensa-Zangetsu-Portable-main\UNLOCK'
+```
+
+This produces `Catalog/unlock-models.json` with model/platform/mode metadata
+and profile hashes. It deliberately excludes DLL/EXE files, loaders, operation
+scripts, credentials and bypass resources. All entries remain
+`IndexedUnverified`.

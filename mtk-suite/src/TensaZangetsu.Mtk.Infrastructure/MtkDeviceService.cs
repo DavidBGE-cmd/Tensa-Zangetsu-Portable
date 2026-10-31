@@ -17,13 +17,27 @@ public sealed class MtkDeviceService : IMtkDeviceService
     {
         var logs = new List<MtkLogEntry>();
         var reporter = new Reporter(logs, progress);
+        string? selectedPort = ResolveUniqueMtkComPort();
         OperationResult result = await _backend.ExecuteOperationAsync(
-            new OperationRequest("ReadInfo", "MTK"),
+            new OperationRequest("ReadInfo", "MTK", PortName: selectedPort),
             reporter,
             cancellationToken).ConfigureAwait(false);
 
         MtkDeviceSnapshot? snapshot = result.Data is null ? null : CreateSnapshot(result.Data);
         return new(result.Success, result.Message, snapshot, logs);
+    }
+
+    private static string? ResolveUniqueMtkComPort()
+    {
+        IReadOnlyList<TrappedDevicePort> candidates =
+            new DevicePortTrapService()
+                .DetectConnectedServicingPorts()
+                .Where(static candidate =>
+                    candidate.Platform.Equals("MTK", StringComparison.OrdinalIgnoreCase) &&
+                    candidate.PortName.StartsWith("COM", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+        return candidates.Count == 1 ? candidates[0].PortName : null;
     }
 
     private static MtkDeviceSnapshot CreateSnapshot(IReadOnlyDictionary<string, object?> data) =>

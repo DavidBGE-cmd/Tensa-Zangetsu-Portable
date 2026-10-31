@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tensa-zangetsu.local/schemas/unlock-models.schema.json",
+  "title": "Offline model compatibility index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAtUtc", "sourceRoot", "models", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedAtUtc": { "type": "string", "minLength": 1 },
+    "sourceRoot": { "type": "string", "minLength": 1 },
+    "diagnostics": { "type": "array", "items": { "type": "string" } },
+    "models": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id", "brand", "model", "platform", "mode", "connection",
+          "profilePath", "profileSha256", "verificationStatus"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "brand": { "type": "string" },
+          "model": { "type": "string", "minLength": 1 },
+          "deviceName": { "type": ["string", "null"] },
+          "chipset": { "type": ["string", "null"] },
+          "platform": { "type": ["string", "null"] },
+          "mode": { "type": ["string", "null"] },
+          "connection": { "type": ["string", "null"] },
+          "loaderName": { "type": ["string", "null"] },
+          "preloaderName": { "type": ["string", "null"] },
+          "profilePath": { "type": "string", "minLength": 1 },
+          "profileSha256": { "type": "string", "pattern": "^[0-9A-Fa-f]{64}$" },
+          "verificationStatus": {
+            "enum": ["ReferenceOnly", "IndexedUnverified", "ImplementedUntested", "Verified", "Unavailable"]
+          }
+        }
+      }
+    }
+  }
+}

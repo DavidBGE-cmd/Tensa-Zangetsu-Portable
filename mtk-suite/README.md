@@ -41,9 +41,19 @@ dotnet run --project src/TensaZangetsu.Mtk.Cli -- identify
 dotnet run --project src/TensaZangetsu.Mtk.Cli -- identify --json
 ```
 
-The device must be connected in an authorized MediaTek BROM/Preloader mode and
-be accessible through LibUsb. A missing DLL, driver or device is reported as an
-error; no fallback data is generated.
+The device must be connected in an authorized MediaTek BROM/Preloader mode.
+Windows COM/VCOM candidates use the serial transport and do not require the
+native LibUsb runtime. Native USB enumeration is deliberately disabled by
+default after startup; enable it only after supplying a verified x64 runtime:
+
+```powershell
+$env:TENSAZANGETSU_ENABLE_NATIVE_USB_SCAN = '1'
+dotnet run --project .\src\TensaZangetsu.Mtk.Cli -- identify
+```
+
+A missing DLL, driver or device is reported as an error; no fallback data is
+fabricated. Identification does not upload a DA, authenticate, write storage
+or execute a bypass.
 
 ## Device asset layout
 

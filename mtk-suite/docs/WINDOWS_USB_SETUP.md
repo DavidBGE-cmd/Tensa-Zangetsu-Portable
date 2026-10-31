@@ -31,3 +31,11 @@ dotnet publish .\src\TensaZangetsu.Mtk.Cli -c Release -r win-x64 --self-containe
 
 The project does not install drivers, services or filters. It does not use or
 probe UsbDk.
+
+## COM/VCOM fallback
+
+Some MediaTek devices expose BROM through a Windows `COMn` port instead of a
+native LibUsb interface. The shared MTK backend accepts an explicitly selected
+COM port and performs only the bounded initial BROM identification exchange.
+This route does not require the native DLL and does not upload DA/EMI/Auth or
+write device storage.

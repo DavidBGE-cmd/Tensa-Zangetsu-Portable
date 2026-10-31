@@ -14,6 +14,16 @@ public static class LibUsbTransportFactory
     /// <summary>Enumerates backend topology identities without choosing a device.</summary>
     public static IReadOnlyList<UsbTransportIdentity> Enumerate(ushort? vendorId = null, ushort? productId = null,string? serialNumber=null)
     {
+        if (OperatingSystem.IsWindows() &&
+            !string.Equals(
+                Environment.GetEnvironmentVariable("TENSAZANGETSU_ENABLE_NATIVE_USB_SCAN"),
+                "1",
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Native LibUsb scanning is disabled by default on Windows. Set TENSAZANGETSU_ENABLE_NATIVE_USB_SCAN=1 after installing a verified x64 libusb runtime and driver.");
+        }
+
         using var context = new UsbContext();
         var devices = context.FindAll(new UsbDeviceFinder { Vid = vendorId ?? int.MaxValue, Pid = productId ?? int.MaxValue,SerialNumber=serialNumber! }).ToList();
         try { return devices.Select(d => LibUsbTransport.GetIdentity(d,serialNumber)).ToArray(); }
